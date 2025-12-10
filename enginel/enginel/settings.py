@@ -37,6 +37,16 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'drf_spectacular',
+    'cadquery',
+    'boto3',
+    'django_treebeard',
+    'python_decouple',
+    'django_auditlog',
+    'psycopg2',
+    'designs',
+
 ]
 
 MIDDLEWARE = [
