@@ -1,2 +1,6 @@
 django
 psycopg[binary]
+django-auditlog
+django-treebeard
+djangorestframework
+
