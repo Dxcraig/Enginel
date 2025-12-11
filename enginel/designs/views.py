@@ -20,6 +20,7 @@ from .serializers import (
     UploadURLResponseSerializer,
     DownloadURLResponseSerializer,
 )
+from .tasks import process_design_asset
 
 
 class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -125,15 +126,14 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Update status to processing
-        design_asset.status = 'PROCESSING'
-        design_asset.save()
-        
-        # TODO: Queue Celery task for processing
-        # process_design_asset.delay(design_asset.id)
+        # Queue Celery task for processing
+        task = process_design_asset.delay(str(design_asset.id))
         
         serializer = self.get_serializer(design_asset)
-        return Response(serializer.data)
+        response_data = serializer.data
+        response_data['task_id'] = task.id
+        
+        return Response(response_data)
     
     @action(detail=True, methods=['get'])
     def download(self, request, pk=None):

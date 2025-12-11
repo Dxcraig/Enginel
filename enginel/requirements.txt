@@ -3,4 +3,6 @@ psycopg[binary]
 django-auditlog
 django-treebeard
 djangorestframework
+celery[redis]
+redis
 
