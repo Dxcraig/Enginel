@@ -6,3 +6,12 @@ djangorestframework
 celery[redis]
 redis
 
+# Geometry Processing
+cadquery
+numpy
+scipy
+
+# AWS S3 Storage
+django-storages[s3]
+boto3
+

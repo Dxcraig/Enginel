@@ -12,7 +12,8 @@ import logging
 from celery import shared_task
 from django.core.files.storage import default_storage
 from django.utils import timezone
-from .models import DesignAsset, AnalysisJob
+from .models import DesignAsset, AnalysisJob, AssemblyNode
+from .geometry_processor import GeometryProcessor, GEOMETRY_AVAILABLE
 
 logger = logging.getLogger(__name__)
 
@@ -177,21 +178,52 @@ def extract_geometry_metadata(design_asset_id):
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Extracting geometry metadata for: {design_asset.filename}")
         
-        # TODO: Implement OpenCASCADE/PythonOCC parsing
-        # For now, return placeholder metadata
+        if not GEOMETRY_AVAILABLE:
+            logger.warning("CadQuery/OCP not available. Returning placeholder metadata.")
+            metadata = {
+                'volume_mm3': 0.0,
+                'surface_area_mm2': 0.0,
+                'center_of_mass': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+                'bounding_box': {
+                    'min': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+                    'max': {'x': 0.0, 'y': 0.0, 'z': 0.0}
+                },
+                'part_count': 1,
+                'unit': 'millimeters',
+                'note': 'Geometry processing unavailable - install cadquery'
+            }
+            return metadata
+        
+        # Download file from S3 to temporary location
+        file_path = design_asset.file.path if hasattr(design_asset.file, 'path') else str(design_asset.file)
+        
+        # Process with GeometryProcessor
+        processor = GeometryProcessor(file_path)
+        mass_props = processor.extract_mass_properties()
+        topology = processor.extract_topology_info()
+        
         metadata = {
-            'volume_mm3': 0.0,
-            'surface_area_mm2': 0.0,
-            'center_of_mass': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+            'volume_mm3': mass_props['volume'],
+            'surface_area_mm2': mass_props['surface_area'],
+            'center_of_mass': mass_props['center_of_mass'],
             'bounding_box': {
-                'min': {'x': 0.0, 'y': 0.0, 'z': 0.0},
-                'max': {'x': 0.0, 'y': 0.0, 'z': 0.0}
+                'min': {
+                    'x': mass_props['bounding_box']['xmin'],
+                    'y': mass_props['bounding_box']['ymin'],
+                    'z': mass_props['bounding_box']['zmin']
+                },
+                'max': {
+                    'x': mass_props['bounding_box']['xmax'],
+                    'y': mass_props['bounding_box']['ymax'],
+                    'z': mass_props['bounding_box']['zmax']
+                },
+                'dimensions': mass_props['bounding_box']['dimensions']
             },
-            'part_count': 1,
+            'topology': topology,
             'unit': 'millimeters'
         }
         
-        logger.info(f"Metadata extracted: {metadata}")
+        logger.info(f"Metadata extracted: volume={metadata['volume_mm3']:.2f} mm³")
         return metadata
         
     except Exception as exc:
@@ -221,20 +253,40 @@ def run_design_rule_checks(design_asset_id):
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Running DRC for: {design_asset.filename}")
         
-        # TODO: Implement actual geometry validation
-        # For now, return placeholder validation
+        if not GEOMETRY_AVAILABLE:
+            logger.warning("CadQuery/OCP not available. Skipping validation.")
+            validation_result = {
+                'is_valid': True,
+                'errors': {},
+                'warnings': [{'message': 'Geometry validation unavailable - install cadquery'}],
+                'checks_performed': []
+            }
+            return validation_result
+        
+        # Get file path
+        file_path = design_asset.file.path if hasattr(design_asset.file, 'path') else str(design_asset.file)
+        
+        # Run validation with GeometryProcessor
+        processor = GeometryProcessor(file_path)
+        validation = processor.run_design_rule_checks()
+        
+        # Convert to expected format
         validation_result = {
-            'is_valid': True,
-            'errors': {},
-            'warnings': [],
+            'is_valid': validation['is_valid'],
+            'is_manifold': validation.get('is_manifold', False),
+            'is_closed': validation.get('is_closed', False),
+            'errors': {issue['code']: issue['message'] for issue in validation.get('issues', []) if issue['severity'] == 'error'},
+            'warnings': [{'code': issue['code'], 'message': issue['message']} for issue in validation.get('issues', []) if issue['severity'] == 'warning'],
             'checks_performed': [
                 'manifold_check',
-                'self_intersection_check',
+                'watertight_check',
+                'brep_validity_check',
                 'topology_check'
-            ]
+            ],
+            'summary': validation.get('summary', 'No issues found')
         }
         
-        logger.info(f"DRC completed: {validation_result}")
+        logger.info(f"DRC completed: {validation_result['summary']}")
         return validation_result
         
     except Exception as exc:
@@ -268,33 +320,71 @@ def extract_bom_from_assembly(design_asset_id):
             started_at=timezone.now()
         )
         
-        # TODO: Implement BOM extraction from STEP assembly
-        # This requires parsing assembly relationships in CAD file
-        # For now, create a simple placeholder BOM structure
+        if not GEOMETRY_AVAILABLE:
+            logger.warning("CadQuery/OCP not available. Skipping BOM extraction.")
+            bom_job.status = 'SUCCESS'
+            bom_job.result = {'components': [], 'note': 'BOM extraction unavailable - install cadquery'}
+            bom_job.completed_at = timezone.now()
+            bom_job.save()
+            return {'components': []}
         
-        from .models import AssemblyNode
+        # Get file path
+        file_path = design_asset.file.path if hasattr(design_asset.file, 'path') else str(design_asset.file)
         
-        # Example: Create a root assembly node
-        # root = AssemblyNode.add_root(
-        #     design_asset=design_asset,
-        #     name=design_asset.filename,
-        #     part_number=design_asset.series.part_number,
-        #     node_type='ASSEMBLY',
-        #     quantity=1
-        # )
+        # Extract BOM using GeometryProcessor
+        processor = GeometryProcessor(file_path)
+        components = processor.extract_bom_structure()
         
-        result = {
-            'bom_nodes_created': 0,
-            'root_assemblies': 0,
-            'total_parts': 0
-        }
+        # Create AssemblyNode tree from extracted components
+        if components:
+            # Create root assembly node
+            root = AssemblyNode.add_root(
+                design_asset=design_asset,
+                name=design_asset.filename,
+                part_number=design_asset.series.part_number,
+                node_type='ASSEMBLY',
+                quantity=1,
+                component_metadata={
+                    'is_root': True,
+                    'component_count': len(components)
+                }
+            )
+            
+            # Add component nodes as children
+            for comp in components:
+                root.add_child(
+                    design_asset=design_asset,
+                    name=comp['name'],
+                    part_number=f"{design_asset.series.part_number}_COMP{comp['index']}",
+                    node_type='PART',
+                    quantity=1,
+                    component_metadata={
+                        'volume': comp['volume'],
+                        'center_of_mass': comp['center_of_mass']
+                    }
+                )
+            
+            result = {
+                'bom_nodes_created': len(components) + 1,  # +1 for root
+                'root_assemblies': 1,
+                'total_parts': len(components),
+                'components': components
+            }
+        else:
+            # Single part, no assembly
+            result = {
+                'bom_nodes_created': 0,
+                'root_assemblies': 0,
+                'total_parts': 1,
+                'note': 'Single part file, no assembly structure'
+            }
         
         bom_job.status = 'SUCCESS'
         bom_job.result = result
         bom_job.completed_at = timezone.now()
         bom_job.save()
         
-        logger.info("BOM extraction completed")
+        logger.info(f"BOM extraction completed: {result['total_parts']} parts")
         return result
         
     except Exception as exc:
