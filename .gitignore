@@ -42,6 +42,10 @@ db.sqlite3-journal
 /media/
 /static/
 
+# Django migrations (keep initial migrations, ignore data migrations)
+**/migrations/__pycache__/
+**/migrations/*.pyc
+
 # Celery
 celerybeat-schedule
 celerybeat.pid
@@ -103,10 +107,6 @@ coverage.xml
 *.mo
 *.pot
 
-# Django migrations (optional - comment out if you want to track them)
-# */migrations/*.py
-# */migrations/*.pyc
-
 # macOS
 .DS_Store
 .AppleDouble
@@ -126,6 +126,11 @@ $RECYCLE.BIN/
 # Docker
 *.tar
 *.tar.gz
+docker-compose.override.yml
+
+# Docker volumes (data persistence)
+postgres_data/
+redis_data/
 
 # IDEs
 *.swp
@@ -149,7 +154,9 @@ tmp/
 temp/
 *.tmp
 
-# CAD files (if you want to exclude test files)
+# Test CAD files (uncomment if you want to exclude test files)
+# test_files/
+# samples/
 # *.step
 # *.stp
 # *.iges
@@ -157,6 +164,11 @@ temp/
 
 # AWS
 .aws/
+aws-credentials.json
+
+# Azure (if using Azure Storage)
+.azure/
+azure-credentials.json
 
 # Node (if using any frontend tools)
 node_modules/
@@ -183,3 +195,22 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Usage guide backups
+USAGE_GUIDE.*.md
+*_BACKUP.md
+
+# Local development overrides
+.env.development
+.env.local.override
+local_settings.py
+
+# Performance profiling
+*.prof
+*.lprof
+profile_*.txt
+
+# Documentation builds
+docs/_build/
+docs/.doctrees/
+site/
