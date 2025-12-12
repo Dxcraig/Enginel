@@ -11,7 +11,8 @@ import hashlib
 import logging
 from celery import shared_task
 from django.core.files.storage import default_storage
-from .models import DesignAsset
+from django.utils import timezone
+from .models import DesignAsset, AnalysisJob
 
 logger = logging.getLogger(__name__)
 
@@ -40,27 +41,64 @@ def process_design_asset(self, design_asset_id):
         design_asset.save()
         
         # Step 1: Calculate file hash
+        hash_job = AnalysisJob.objects.create(
+            design_asset=design_asset,
+            job_type='HASH_CALCULATION',
+            status='RUNNING',
+            celery_task_id=self.request.id,
+            started_at=timezone.now()
+        )
+        
         file_hash = calculate_file_hash.delay(design_asset_id).get()
         design_asset.file_hash = file_hash
         design_asset.save()
         
+        hash_job.status = 'SUCCESS'
+        hash_job.result = {'file_hash': file_hash}
+        hash_job.completed_at = timezone.now()
+        hash_job.save()
+        
         # Step 2: Extract geometry metadata
-        # TODO: Implement STEP/IGES parsing with OpenCASCADE
+        metadata_job = AnalysisJob.objects.create(
+            design_asset=design_asset,
+            job_type='GEOMETRY_EXTRACTION',
+            status='RUNNING',
+            started_at=timezone.now()
+        )
+        
         metadata = extract_geometry_metadata.delay(design_asset_id).get()
         design_asset.metadata = metadata
         design_asset.save()
         
+        metadata_job.status = 'SUCCESS'
+        metadata_job.result = metadata
+        metadata_job.completed_at = timezone.now()
+        metadata_job.save()
+        
         # Step 3: Run design rule checks
+        validation_job = AnalysisJob.objects.create(
+            design_asset=design_asset,
+            job_type='VALIDATION',
+            status='RUNNING',
+            started_at=timezone.now()
+        )
+        
         validation_result = run_design_rule_checks.delay(design_asset_id).get()
         design_asset.is_valid_geometry = validation_result['is_valid']
-        design_asset.validation_errors = validation_result.get('errors', {})
+        design_asset.validation_report = validation_result
         design_asset.save()
+        
+        validation_job.status = 'SUCCESS'
+        validation_job.result = validation_result
+        validation_job.completed_at = timezone.now()
+        validation_job.save()
         
         # Step 4: Extract BOM (if applicable)
         # TODO: Implement BOM extraction
         
         # Mark as completed
         design_asset.status = 'COMPLETED'
+        design_asset.processed_at = timezone.now()
         design_asset.save()
         
         logger.info(f"Successfully processed design asset: {design_asset.filename}")
@@ -77,6 +115,7 @@ def process_design_asset(self, design_asset_id):
         try:
             design_asset = DesignAsset.objects.get(id=design_asset_id)
             design_asset.status = 'FAILED'
+            design_asset.processing_error = str(exc)
             design_asset.save()
         except Exception:
             pass
@@ -216,18 +255,57 @@ def extract_bom_from_assembly(design_asset_id):
     Returns:
         dict: BOM extraction results
     """
+    bom_job = None
     try:
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Extracting BOM for: {design_asset.filename}")
         
+        # Create analysis job
+        bom_job = AnalysisJob.objects.create(
+            design_asset=design_asset,
+            job_type='BOM_PARSING',
+            status='RUNNING',
+            started_at=timezone.now()
+        )
+        
         # TODO: Implement BOM extraction from STEP assembly
         # This requires parsing assembly relationships in CAD file
+        # For now, create a simple placeholder BOM structure
+        
+        from .models import AssemblyNode
+        
+        # Example: Create a root assembly node
+        # root = AssemblyNode.add_root(
+        #     design_asset=design_asset,
+        #     name=design_asset.filename,
+        #     part_number=design_asset.series.part_number,
+        #     node_type='ASSEMBLY',
+        #     quantity=1
+        # )
+        
+        result = {
+            'bom_nodes_created': 0,
+            'root_assemblies': 0,
+            'total_parts': 0
+        }
+        
+        bom_job.status = 'SUCCESS'
+        bom_job.result = result
+        bom_job.completed_at = timezone.now()
+        bom_job.save()
         
         logger.info("BOM extraction completed")
-        return {'bom_nodes_created': 0}
+        return result
         
     except Exception as exc:
         logger.error(f"Error extracting BOM: {exc}")
+        
+        if bom_job:
+            bom_job.status = 'FAILED'
+            bom_job.error_message = str(exc)
+            bom_job.completed_at = timezone.now()
+            bom_job.save()
+        
         raise
 
 
@@ -251,8 +329,51 @@ def normalize_units(design_asset_id):
         
         # TODO: Implement unit detection and conversion
         
-        return {'original_unit': 'inches', 'converted_to': 'millimeters'}
+        result = {
+            'original_unit': design_asset.units or 'unknown',
+            'converted_to': 'millimeters',
+            'conversion_factor': 1.0
+        }
+        
+        return result
         
     except Exception as exc:
         logger.error(f"Error normalizing units: {exc}")
+        raise
+
+
+@shared_task(bind=True)
+def create_analysis_job(self, design_asset_id, job_type):
+    """
+    Create and track a new analysis job.
+    
+    Args:
+        design_asset_id: UUID of the DesignAsset
+        job_type: Type of analysis (e.g., 'MASS_PROPERTIES', 'INTERFERENCE_CHECK')
+    
+    Returns:
+        dict: Job creation results
+    """
+    try:
+        design_asset = DesignAsset.objects.get(id=design_asset_id)
+        
+        job = AnalysisJob.objects.create(
+            design_asset=design_asset,
+            job_type=job_type,
+            status='PENDING',
+            celery_task_id=self.request.id,
+            created_at=timezone.now()
+        )
+        
+        logger.info(f"Created analysis job {job.id} for {design_asset.filename}")
+        
+        return {
+            'job_id': str(job.id),
+            'design_asset_id': str(design_asset_id),
+            'job_type': job_type,
+            'status': 'PENDING'
+        }
+        
+    except Exception as exc:
+        logger.error(f"Error creating analysis job: {exc}")
         raise

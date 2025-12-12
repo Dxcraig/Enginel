@@ -4,7 +4,10 @@ Serializers for Enginel API.
 Handles serialization/deserialization of models to/from JSON.
 """
 from rest_framework import serializers
-from .models import CustomUser, DesignAsset, AssemblyNode
+from .models import (
+    CustomUser, DesignSeries, DesignAsset, AssemblyNode,
+    AnalysisJob, ReviewSession, Markup
+)
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -31,25 +34,54 @@ class CustomUserSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'date_joined']
 
 
+class DesignSeriesSerializer(serializers.ModelSerializer):
+    """
+    Serializer for Design Series (Part Numbers).
+    """
+    version_count = serializers.IntegerField(read_only=True)
+    latest_version_number = serializers.IntegerField(read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    
+    class Meta:
+        model = DesignSeries
+        fields = [
+            'id',
+            'part_number',
+            'name',
+            'description',
+            'version_count',
+            'latest_version_number',
+            'created_by_username',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
 class DesignAssetListSerializer(serializers.ModelSerializer):
     """
     Lightweight serializer for listing design assets.
     
     Used in list views where full metadata isn't needed.
     """
-    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    part_number = serializers.CharField(source='series.part_number', read_only=True)
+    series_name = serializers.CharField(source='series.name', read_only=True)
+    uploaded_by_username = serializers.CharField(source='uploaded_by.username', read_only=True)
     
     class Meta:
         model = DesignAsset
         fields = [
             'id',
-            'filename',
+            'series',
             'part_number',
+            'series_name',
+            'version_number',
+            'filename',
             'revision',
             'classification',
             'status',
             'is_valid_geometry',
-            'created_by_username',
+            'uploaded_by_username',
             'created_at',
         ]
         read_only_fields = ['id', 'created_at']
@@ -61,43 +93,45 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
     
     Includes full metadata and validation results.
     """
-    created_by = CustomUserSerializer(read_only=True)
-    updated_by = CustomUserSerializer(read_only=True)
+    series = DesignSeriesSerializer(read_only=True)
+    uploaded_by = CustomUserSerializer(read_only=True)
     
     class Meta:
         model = DesignAsset
         fields = [
             'id',
+            'series',
+            'version_number',
             'filename',
-            'part_number',
             'revision',
             'description',
             'classification',
             'status',
             's3_key',
             'file_hash',
-            'file_size_bytes',
-            'file_format',
+            'file_size',
+            'units',
             'is_valid_geometry',
-            'validation_errors',
+            'validation_report',
             'metadata',
             'tags',
-            'created_by',
+            'uploaded_by',
             'created_at',
-            'updated_by',
             'updated_at',
+            'processed_at',
         ]
         read_only_fields = [
             'id',
             's3_key',
             'file_hash',
-            'file_size_bytes',
+            'file_size',
             'status',
             'is_valid_geometry',
-            'validation_errors',
+            'validation_report',
             'metadata',
             'created_at',
             'updated_at',
+            'processed_at',
         ]
 
 
@@ -111,12 +145,13 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DesignAsset
         fields = [
+            'series',
+            'version_number',
             'filename',
-            'part_number',
             'revision',
             'description',
             'classification',
-            'file_format',
+            'units',
             'tags',
         ]
     
@@ -130,6 +165,22 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
                     "You do not have clearance to upload ITAR-controlled designs."
                 )
         return value
+    
+    def validate(self, data):
+        """Ensure version number doesn't already exist for the series."""
+        series = data.get('series')
+        version_number = data.get('version_number')
+        
+        if series and version_number:
+            if DesignAsset.objects.filter(
+                series=series,
+                version_number=version_number
+            ).exists():
+                raise serializers.ValidationError(
+                    f"Version {version_number} already exists for {series.part_number}"
+                )
+        
+        return data
 
 
 class AssemblyNodeSerializer(serializers.ModelSerializer):
@@ -139,7 +190,6 @@ class AssemblyNodeSerializer(serializers.ModelSerializer):
     Supports hierarchical representation of assemblies.
     """
     children = serializers.SerializerMethodField()
-    depth = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = AssemblyNode
@@ -148,13 +198,16 @@ class AssemblyNodeSerializer(serializers.ModelSerializer):
             'design_asset',
             'name',
             'part_number',
+            'node_type',
             'quantity',
             'reference_designator',
-            'notes',
+            'mass',
+            'volume',
             'depth',
+            'numchild',
             'children',
         ]
-        read_only_fields = ['id', 'depth']
+        read_only_fields = ['id', 'depth', 'numchild']
     
     def get_children(self, obj):
         """Recursively serialize child nodes."""
@@ -200,3 +253,110 @@ class DownloadURLResponseSerializer(serializers.Serializer):
     download_url = serializers.URLField()
     expires_in_seconds = serializers.IntegerField()
     filename = serializers.CharField()
+
+
+class AnalysisJobSerializer(serializers.ModelSerializer):
+    """
+    Serializer for background analysis jobs.
+    """
+    duration = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = AnalysisJob
+        fields = [
+            'id',
+            'design_asset',
+            'job_type',
+            'status',
+            'celery_task_id',
+            'result',
+            'error_message',
+            'created_at',
+            'started_at',
+            'completed_at',
+            'duration',
+        ]
+        read_only_fields = [
+            'id',
+            'celery_task_id',
+            'created_at',
+            'started_at',
+            'completed_at',
+        ]
+    
+    def get_duration(self, obj):
+        """Calculate job duration."""
+        return obj.get_duration()
+
+
+class MarkupSerializer(serializers.ModelSerializer):
+    """
+    Serializer for 3D markups/annotations.
+    """
+    author_username = serializers.CharField(source='author.username', read_only=True)
+    
+    class Meta:
+        model = Markup
+        fields = [
+            'id',
+            'review_session',
+            'author',
+            'author_username',
+            'title',
+            'comment',
+            'anchor_point',
+            'camera_state',
+            'is_resolved',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['id', 'author', 'created_at', 'updated_at']
+
+
+class ReviewSessionSerializer(serializers.ModelSerializer):
+    """
+    Serializer for design review sessions.
+    """
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    reviewer_usernames = serializers.SerializerMethodField()
+    markup_count = serializers.IntegerField(read_only=True)
+    
+    class Meta:
+        model = ReviewSession
+        fields = [
+            'id',
+            'design_asset',
+            'title',
+            'description',
+            'status',
+            'created_by',
+            'created_by_username',
+            'reviewers',
+            'reviewer_usernames',
+            'markup_count',
+            'created_at',
+            'started_at',
+            'completed_at',
+        ]
+        read_only_fields = [
+            'id',
+            'created_by',
+            'created_at',
+            'started_at',
+            'completed_at',
+        ]
+    
+    def get_reviewer_usernames(self, obj):
+        """Get list of reviewer usernames."""
+        return [r.username for r in obj.reviewers.all()]
+
+
+class ReviewSessionDetailSerializer(ReviewSessionSerializer):
+    """
+    Detailed review session with nested markups.
+    """
+    markups = MarkupSerializer(many=True, read_only=True)
+    design_asset_detail = DesignAssetDetailSerializer(source='design_asset', read_only=True)
+    
+    class Meta(ReviewSessionSerializer.Meta):
+        fields = ReviewSessionSerializer.Meta.fields + ['markups', 'design_asset_detail']

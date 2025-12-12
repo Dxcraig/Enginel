@@ -17,13 +17,25 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from designs.views import CustomUserViewSet, DesignAssetViewSet, AssemblyNodeViewSet
+from designs.views import (
+    CustomUserViewSet,
+    DesignSeriesViewSet,
+    DesignAssetViewSet,
+    AssemblyNodeViewSet,
+    AnalysisJobViewSet,
+    ReviewSessionViewSet,
+    MarkupViewSet,
+)
 
 # Create API router
 router = DefaultRouter()
 router.register(r'users', CustomUserViewSet, basename='user')
+router.register(r'series', DesignSeriesViewSet, basename='series')
 router.register(r'designs', DesignAssetViewSet, basename='design')
 router.register(r'bom-nodes', AssemblyNodeViewSet, basename='bom-node')
+router.register(r'analysis-jobs', AnalysisJobViewSet, basename='analysis-job')
+router.register(r'reviews', ReviewSessionViewSet, basename='review')
+router.register(r'markups', MarkupViewSet, basename='markup')
 
 urlpatterns = [
     path('admin/', admin.site.urls),

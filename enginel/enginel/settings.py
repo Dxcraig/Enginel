@@ -40,7 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'designs',
-    'auditlog',
     'treebeard',
 ]
 
@@ -161,3 +160,7 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Django Auditlog Configuration
+AUDITLOG_INCLUDE_ALL_MODELS = False  # We're using custom AuditLog model
+

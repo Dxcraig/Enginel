@@ -73,10 +73,27 @@ REDIS_URL=redis://localhost:6379/0
 
 ### Running with Docker
 
-Start the application:
+Start all services (web, database, redis, celery workers):
 
 ```bash
-docker-compose up
+docker-compose up -d
+```
+
+Access the application:
+- **API Root**: http://localhost:8000/api/
+- **Admin Panel**: http://localhost:8000/admin/
+- **Login**: admin / [password you set during setup]
+
+Create a superuser (if not already done):
+
+```bash
+docker exec -it enginel_app python manage.py createsuperuser
+```
+
+Check service status:
+
+```bash
+docker-compose ps
 ```
 
 The API will be available at `http://localhost:8000`
