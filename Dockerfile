@@ -20,7 +20,19 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 COPY enginel/requirements.txt .
 RUN uv pip install -r requirements.txt --system
 
+# Create non-root user for security with home directory
+RUN groupadd -r enginel --gid=1000 && \
+    useradd -r -g enginel --uid=1000 --create-home enginel
+
 COPY enginel/ .
+
+# Change ownership of application files and ensure cache directory exists
+RUN chown -R enginel:enginel /app && \
+    mkdir -p /home/enginel/.cache && \
+    chown -R enginel:enginel /home/enginel/.cache
+
+# Switch to non-root user
+USER enginel
 
 EXPOSE 8000
 

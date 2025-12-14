@@ -62,7 +62,7 @@ services:
   celery_beat:
     build: .
     container_name: enginel_celery_beat
-    command: celery -A enginel beat --loglevel=info
+    command: celery -A enginel beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     volumes:
       - ./enginel:/app
     depends_on:
