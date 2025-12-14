@@ -244,14 +244,20 @@ class DesignAsset(models.Model):
     s3_key = models.CharField(
         max_length=512,
         unique=True,
+        null=True,
+        blank=True,
         help_text="Full S3 path: designs/{uuid}/{filename}"
     )
     file_size = models.BigIntegerField(
+        null=True,
+        blank=True,
         help_text="File size in bytes"
     )
     file_hash = models.CharField(
         max_length=64,
         db_index=True,
+        blank=True,
+        default='',
         help_text="SHA-256 hash for integrity verification"
     )
     

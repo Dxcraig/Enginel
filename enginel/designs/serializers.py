@@ -141,6 +141,12 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
     
     Used when requesting a pre-signed upload URL.
     """
+    tags = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        allow_null=True,
+        default=list
+    )
     
     class Meta:
         model = DesignAsset
@@ -154,6 +160,12 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
             'units',
             'tags',
         ]
+    
+    def validate_tags(self, value):
+        """Handle null or empty tags."""
+        if value is None or value == 'null' or value == '':
+            return []
+        return value
     
     def validate_classification(self, value):
         """Ensure user has clearance for specified classification."""
