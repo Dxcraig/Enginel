@@ -8,6 +8,7 @@ WORKDIR /app
 # Install system dependencies for OpenCASCADE/CadQuery
 RUN apt-get update && apt-get install -y \
     curl \
+    netcat-openbsd \
     libgl1-mesa-glx \
     libglu1-mesa \
     libxrender1 \

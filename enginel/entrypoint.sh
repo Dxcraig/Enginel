@@ -1,10 +1,13 @@
 #!/bin/sh
 
-echo "Waiting for postgres..."
-while ! nc -z ${DB_HOST:-db} ${DB_PORT:-5432}; do
-  sleep 0.1
-done
-echo "PostgreSQL started"
+# Wait for database if using local docker-compose setup
+if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -n "$DB_HOST" ]; then
+    echo "Waiting for postgres at ${DB_HOST}:${DB_PORT:-5432}..."
+    while ! nc -z ${DB_HOST} ${DB_PORT:-5432} 2>/dev/null; do
+      sleep 0.1
+    done
+    echo "PostgreSQL started"
+fi
 
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
