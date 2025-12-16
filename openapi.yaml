@@ -1,0 +1,985 @@
+openapi: 3.0.3
+info:
+  title: Enginel API
+  description: |
+    REST API for Enginel - Engineering Intelligence Kernel
+    
+    Enginel provides comprehensive CAD design management, BOM extraction,
+    review workflows, and compliance tracking with ITAR support.
+    
+    ## Features
+    - Multi-tenant organization isolation
+    - Token-based authentication with refresh tokens
+    - Real-time background job tracking
+    - Advanced search and filtering
+    - Comprehensive audit logging
+    - ITAR compliance controls
+    
+    ## Authentication
+    All endpoints (except health checks) require authentication via:
+    - Token Authentication: `Authorization: Token <token>`
+    - API Key Authentication: `Authorization: ApiKey <key>`
+    - Session Authentication (browser only)
+    
+    See /api/auth/login/ to obtain tokens.
+  version: 1.0.0
+  contact:
+    name: Enginel API Support
+    email: support@enginel.example.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8000/api
+    description: Development server
+  - url: https://api.enginel.example.com/api
+    description: Production server
+
+tags:
+  - name: Authentication
+    description: User authentication and token management
+  - name: Organizations
+    description: Multi-tenant organization management
+  - name: Users
+    description: User profiles and management
+  - name: Design Series
+    description: Part number and design family management
+  - name: Design Assets
+    description: CAD file uploads and metadata
+  - name: Assembly Nodes
+    description: Hierarchical Bill of Materials (BOM)
+  - name: Analysis Jobs
+    description: Background processing task tracking
+  - name: Review Sessions
+    description: Collaborative design review workflows
+  - name: Markups
+    description: 3D annotations on designs
+  - name: Audit Logs
+    description: Compliance audit trail (read-only)
+  - name: Health
+    description: System health and monitoring
+
+security:
+  - TokenAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /auth/login/:
+    post:
+      tags: [Authentication]
+      summary: User login
+      description: Authenticate user and receive access + refresh tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                  example: john@example.com
+                password:
+                  type: string
+                  format: password
+                  example: secretpassword
+                device_name:
+                  type: string
+                  example: iPhone
+      responses:
+        '200':
+          description: Successfully authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh/:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      description: Exchange refresh token for new access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: New access token generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                  token_type:
+                    type: string
+                    example: Bearer
+        '401':
+          description: Invalid or expired refresh token
+
+  /auth/logout/:
+    post:
+      tags: [Authentication]
+      summary: Logout user
+      description: Revoke current access token and all refresh tokens
+      responses:
+        '200':
+          description: Successfully logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Successfully logged out
+
+  /auth/verify/:
+    get:
+      tags: [Authentication]
+      summary: Verify token
+      description: Verify current token is valid and get expiration info
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/UserSummary'
+                  token_age_hours:
+                    type: number
+                  expires_in_hours:
+                    type: number
+
+  /organizations/:
+    get:
+      tags: [Organizations]
+      summary: List organizations
+      description: Get paginated list of organizations user has access to
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of organizations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrganizations'
+    
+    post:
+      tags: [Organizations]
+      summary: Create organization
+      description: Create a new organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationCreate'
+      responses:
+        '201':
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+
+  /organizations/{id}/:
+    get:
+      tags: [Organizations]
+      summary: Get organization
+      parameters:
+        - $ref: '#/components/parameters/UuidParam'
+      responses:
+        '200':
+          description: Organization details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    
+    patch:
+      tags: [Organizations]
+      summary: Update organization
+      parameters:
+        - $ref: '#/components/parameters/UuidParam'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrganizationUpdate'
+      responses:
+        '200':
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+    
+    delete:
+      tags: [Organizations]
+      summary: Delete organization
+      parameters:
+        - $ref: '#/components/parameters/UuidParam'
+      responses:
+        '204':
+          description: Organization deleted
+
+  /series/:
+    get:
+      tags: [Design Series]
+      summary: List design series
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: organization
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: part_number
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of design series
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDesignSeries'
+    
+    post:
+      tags: [Design Series]
+      summary: Create design series
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DesignSeriesCreate'
+      responses:
+        '201':
+          description: Design series created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignSeries'
+
+  /designs/:
+    get:
+      tags: [Design Assets]
+      summary: List design assets
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: series
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/DesignStatus'
+        - name: classification
+          in: query
+          schema:
+            $ref: '#/components/schemas/Classification'
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of design assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDesignAssets'
+    
+    post:
+      tags: [Design Assets]
+      summary: Create design asset
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, series, filename]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                series:
+                  type: string
+                  format: uuid
+                filename:
+                  type: string
+                classification:
+                  $ref: '#/components/schemas/Classification'
+                material:
+                  type: string
+      responses:
+        '201':
+          description: Design asset created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignAsset'
+
+  /designs/{id}/:
+    get:
+      tags: [Design Assets]
+      summary: Get design asset
+      parameters:
+        - $ref: '#/components/parameters/UuidParam'
+      responses:
+        '200':
+          description: Design asset details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignAsset'
+
+  /designs/{id}/download/:
+    get:
+      tags: [Design Assets]
+      summary: Download design file
+      parameters:
+        - $ref: '#/components/parameters/UuidParam'
+      responses:
+        '200':
+          description: Design file download
+          content:
+            application/step:
+              schema:
+                type: string
+                format: binary
+            application/iges:
+              schema:
+                type: string
+                format: binary
+
+  /designs/{id}/metadata/:
+    get:
+      tags: [Design Assets]
+      summary: Get design metadata
+      description: Get extracted geometric and material properties
+      parameters:
+        - $ref: '#/components/parameters/UuidParam'
+      responses:
+        '200':
+          description: Design metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DesignMetadata'
+
+  /analysis-jobs/:
+    get:
+      tags: [Analysis Jobs]
+      summary: List analysis jobs
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/JobStatus'
+        - name: job_type
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of analysis jobs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAnalysisJobs'
+
+  /analysis-jobs/{id}/:
+    get:
+      tags: [Analysis Jobs]
+      summary: Get analysis job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Analysis job details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisJob'
+
+  /analysis-jobs/{id}/progress/:
+    get:
+      tags: [Analysis Jobs]
+      summary: Get job progress
+      description: Get real-time progress for running job
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current:
+                    type: integer
+                  total:
+                    type: integer
+                  percent:
+                    type: number
+                  status_message:
+                    type: string
+
+  /health/:
+    get:
+      tags: [Health]
+      summary: Basic health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: enginel
+
+  /health/detailed/:
+    get:
+      tags: [Health]
+      summary: Detailed health check
+      security: []
+      responses:
+        '200':
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  checks:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                      redis:
+                        type: string
+                      celery:
+                        type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  securitySchemes:
+    TokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Format: Token <token>'
+    
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: 'Format: ApiKey <key>'
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    
+    PageSizeParam:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    
+    UuidParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+        code:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          example: 86400
+        token_type:
+          type: string
+          example: Bearer
+        user:
+          $ref: '#/components/schemas/UserSummary'
+
+    UserSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        username:
+          type: string
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+        is_us_organization:
+          type: boolean
+        subscription_tier:
+          type: string
+          enum: [STARTER, PROFESSIONAL, ENTERPRISE]
+        max_users:
+          type: integer
+        max_storage_gb:
+          type: integer
+        member_count:
+          type: integer
+          readOnly: true
+        storage_used_gb:
+          type: number
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OrganizationCreate:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+        description:
+          type: string
+        is_us_organization:
+          type: boolean
+        subscription_tier:
+          type: string
+          enum: [STARTER, PROFESSIONAL, ENTERPRISE]
+
+    OrganizationUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+        subscription_tier:
+          type: string
+
+    DesignSeries:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        organization:
+          type: string
+          format: uuid
+        organization_name:
+          type: string
+          readOnly: true
+        part_number:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        created_by:
+          type: integer
+        created_by_username:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DesignSeriesCreate:
+      type: object
+      required: [organization, part_number, name]
+      properties:
+        organization:
+          type: string
+          format: uuid
+        part_number:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+
+    DesignAsset:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        series:
+          type: string
+          format: uuid
+        part_number:
+          type: string
+          readOnly: true
+        series_name:
+          type: string
+          readOnly: true
+        version_number:
+          type: integer
+        filename:
+          type: string
+        file_size_bytes:
+          type: integer
+        file_hash:
+          type: string
+        revision:
+          type: string
+        classification:
+          $ref: '#/components/schemas/Classification'
+        status:
+          $ref: '#/components/schemas/DesignStatus'
+        is_valid_geometry:
+          type: boolean
+        validation_errors:
+          type: array
+          items:
+            type: string
+        volume_cubic_mm:
+          type: number
+        mass_kg:
+          type: number
+        material:
+          type: string
+        uploaded_by:
+          type: integer
+        uploaded_by_username:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DesignMetadata:
+      type: object
+      properties:
+        geometry:
+          type: object
+          properties:
+            bounding_box:
+              type: object
+              properties:
+                min:
+                  $ref: '#/components/schemas/Point3D'
+                max:
+                  $ref: '#/components/schemas/Point3D'
+            volume_cubic_mm:
+              type: number
+            surface_area_sq_mm:
+              type: number
+            center_of_mass:
+              $ref: '#/components/schemas/Point3D'
+        material:
+          type: object
+          properties:
+            name:
+              type: string
+            density_kg_m3:
+              type: number
+            mass_kg:
+              type: number
+        validation:
+          type: object
+          properties:
+            is_valid:
+              type: boolean
+            errors:
+              type: array
+              items:
+                type: string
+            warnings:
+              type: array
+              items:
+                type: string
+
+    Point3D:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        z:
+          type: number
+
+    AnalysisJob:
+      type: object
+      properties:
+        id:
+          type: string
+        design_asset:
+          type: string
+          format: uuid
+        job_type:
+          type: string
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        celery_task_id:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        duration_seconds:
+          type: integer
+        result:
+          type: object
+        error_message:
+          type: string
+        retry_count:
+          type: integer
+
+    Classification:
+      type: string
+      enum:
+        - UNCLASSIFIED
+        - CONFIDENTIAL
+        - SECRET
+        - TOP_SECRET
+        - ITAR
+
+    DesignStatus:
+      type: string
+      enum:
+        - UPLOADING
+        - PROCESSING
+        - APPROVED
+        - IN_REVIEW
+        - REJECTED
+        - ARCHIVED
+
+    JobStatus:
+      type: string
+      enum:
+        - PENDING
+        - PROCESSING
+        - SUCCESS
+        - FAILURE
+        - CANCELLED
+
+    PaginatedOrganizations:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Organization'
+
+    PaginatedDesignSeries:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DesignSeries'
+
+    PaginatedDesignAssets:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DesignAsset'
+
+    PaginatedAnalysisJobs:
+      type: object
+      properties:
+        count:
+          type: integer
+        next:
+          type: string
+          format: uri
+          nullable: true
+        previous:
+          type: string
+          format: uri
+          nullable: true
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalysisJob'
