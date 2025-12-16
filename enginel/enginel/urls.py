@@ -38,6 +38,12 @@ from designs.views import (
     notification_history,
     notification_stats,
     test_notification,
+    ValidationRuleViewSet,
+    ValidationResultViewSet,
+    ValidateFieldView,
+    ValidateBatchView,
+    ValidationReportView,
+    ValidationStatisticsView,
 )
 from designs.auth_views import (
     login_view,
@@ -62,6 +68,8 @@ router.register(r'analysis-jobs', AnalysisJobViewSet, basename='analysis-job')
 router.register(r'reviews', ReviewSessionViewSet, basename='review')
 router.register(r'markups', MarkupViewSet, basename='markup')
 router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
+router.register(r'validation/rules', ValidationRuleViewSet, basename='validation-rule')
+router.register(r'validation/results', ValidationResultViewSet, basename='validation-result')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -95,6 +103,12 @@ urlpatterns = [
     path('api/notifications/history/', notification_history, name='notification-history'),
     path('api/notifications/stats/', notification_stats, name='notification-stats'),
     path('api/notifications/test/', test_notification, name='test-notification'),
+    
+    # Validation endpoints
+    path('api/validation/validate-field/', ValidateFieldView.as_view(), name='validate-field'),
+    path('api/validation/validate-batch/', ValidateBatchView.as_view(), name='validate-batch'),
+    path('api/validation/report/', ValidationReportView.as_view(), name='validation-report'),
+    path('api/validation/statistics/', ValidationStatisticsView.as_view(), name='validation-statistics'),
 ]
 
 # Serve media files in development

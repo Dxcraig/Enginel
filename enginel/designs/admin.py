@@ -9,7 +9,8 @@ from django.db.models import Count
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
-    NotificationPreference, EmailNotification
+    NotificationPreference, EmailNotification,
+    ValidationRule, ValidationResult
 )
 
 
@@ -795,3 +796,268 @@ class EmailNotificationAdmin(admin.ModelAdmin):
         )
         self.message_user(request, f'{count} notifications queued for retry.')
     retry_failed.short_description = 'Retry failed notifications'
+
+
+@admin.register(ValidationRule)
+class ValidationRuleAdmin(admin.ModelAdmin):
+    """Admin interface for ValidationRule model."""
+    
+    list_display = [
+        'name',
+        'rule_type',
+        'target_model',
+        'target_field',
+        'severity_badge',
+        'is_active',
+        'failure_rate_display',
+        'total_checks',
+        'total_failures',
+        'created_at'
+    ]
+    
+    list_filter = [
+        'rule_type',
+        'target_model',
+        'severity',
+        'is_active',
+        'apply_on_create',
+        'apply_on_update',
+        'organization'
+    ]
+    
+    search_fields = [
+        'name',
+        'description',
+        'target_field',
+        'error_message'
+    ]
+    
+    readonly_fields = [
+        'id',
+        'created_at',
+        'updated_at',
+        'total_checks',
+        'total_failures',
+        'failure_rate_display'
+    ]
+    
+    fieldsets = (
+        ('Basic Information', {
+            'fields': (
+                'id',
+                'name',
+                'description',
+                'is_active'
+            )
+        }),
+        ('Rule Definition', {
+            'fields': (
+                'rule_type',
+                'target_model',
+                'target_field',
+                'rule_config',
+                'error_message',
+                'severity'
+            )
+        }),
+        ('Application Settings', {
+            'fields': (
+                'apply_on_create',
+                'apply_on_update',
+                'conditions'
+            )
+        }),
+        ('Organization & Permissions', {
+            'fields': (
+                'organization',
+                'created_by'
+            )
+        }),
+        ('Statistics', {
+            'fields': (
+                'total_checks',
+                'total_failures',
+                'failure_rate_display',
+                'created_at',
+                'updated_at'
+            )
+        })
+    )
+    
+    actions = [
+        'activate_rules',
+        'deactivate_rules',
+        'reset_statistics'
+    ]
+    
+    def severity_badge(self, obj):
+        """Display severity with colored badge."""
+        colors = {
+            'INFO': '#17A2B8',
+            'WARNING': '#FFC107',
+            'ERROR': '#DC3545',
+            'CRITICAL': '#721C24'
+        }
+        color = colors.get(obj.severity, '#6C757D')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 3px; font-weight: bold;">{}</span>',
+            color, obj.severity
+        )
+    severity_badge.short_description = 'Severity'
+    
+    def failure_rate_display(self, obj):
+        """Display failure rate as percentage."""
+        rate = obj.get_failure_rate()
+        if rate == 0:
+            color = '#28A745'
+        elif rate < 10:
+            color = '#FFC107'
+        else:
+            color = '#DC3545'
+        
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}%</span>',
+            color, rate
+        )
+    failure_rate_display.short_description = 'Failure Rate'
+    
+    def activate_rules(self, request, queryset):
+        """Activate selected rules."""
+        count = queryset.update(is_active=True)
+        self.message_user(request, f'{count} validation rules activated.')
+    activate_rules.short_description = 'Activate selected rules'
+    
+    def deactivate_rules(self, request, queryset):
+        """Deactivate selected rules."""
+        count = queryset.update(is_active=False)
+        self.message_user(request, f'{count} validation rules deactivated.')
+    deactivate_rules.short_description = 'Deactivate selected rules'
+    
+    def reset_statistics(self, request, queryset):
+        """Reset statistics for selected rules."""
+        count = queryset.update(total_checks=0, total_failures=0)
+        self.message_user(request, f'Statistics reset for {count} rules.')
+    reset_statistics.short_description = 'Reset statistics'
+
+
+@admin.register(ValidationResult)
+class ValidationResultAdmin(admin.ModelAdmin):
+    """Admin interface for ValidationResult model."""
+    
+    list_display = [
+        'rule_name',
+        'target_model',
+        'target_id',
+        'status_badge',
+        'severity_display',
+        'was_blocked',
+        'was_overridden',
+        'validated_by',
+        'validated_at'
+    ]
+    
+    list_filter = [
+        'status',
+        'target_model',
+        'was_blocked',
+        'was_overridden',
+        'validated_at'
+    ]
+    
+    search_fields = [
+        'rule__name',
+        'target_id',
+        'error_message',
+        'override_reason'
+    ]
+    
+    readonly_fields = [
+        'id',
+        'rule',
+        'target_model',
+        'target_id',
+        'target_field',
+        'status',
+        'error_message',
+        'details',
+        'validated_by',
+        'validated_at',
+        'was_blocked',
+        'was_overridden',
+        'override_reason',
+        'override_by',
+        'override_at'
+    ]
+    
+    fieldsets = (
+        ('Validation Context', {
+            'fields': (
+                'id',
+                'rule',
+                'target_model',
+                'target_id',
+                'target_field'
+            )
+        }),
+        ('Result', {
+            'fields': (
+                'status',
+                'error_message',
+                'details',
+                'was_blocked'
+            )
+        }),
+        ('Validation Info', {
+            'fields': (
+                'validated_by',
+                'validated_at'
+            )
+        }),
+        ('Override Info', {
+            'fields': (
+                'was_overridden',
+                'override_reason',
+                'override_by',
+                'override_at'
+            )
+        })
+    )
+    
+    actions = ['mark_as_overridden']
+    
+    def rule_name(self, obj):
+        """Display rule name."""
+        return obj.rule.name
+    rule_name.short_description = 'Rule'
+    
+    def status_badge(self, obj):
+        """Display status with colored badge."""
+        colors = {
+            'PASSED': '#28A745',
+            'FAILED': '#DC3545',
+            'SKIPPED': '#6C757D',
+            'ERROR': '#FFC107'
+        }
+        color = colors.get(obj.status, '#6C757D')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 3px; font-weight: bold;">{}</span>',
+            color, obj.status
+        )
+    status_badge.short_description = 'Status'
+    
+    def severity_display(self, obj):
+        """Display rule severity."""
+        return obj.rule.severity
+    severity_display.short_description = 'Severity'
+    
+    def mark_as_overridden(self, request, queryset):
+        """Mark selected results as overridden."""
+        count = queryset.filter(status='FAILED', was_overridden=False).update(
+            was_overridden=True,
+            override_by=request.user,
+            override_reason='Overridden by admin in bulk action'
+        )
+        self.message_user(request, f'{count} validation results marked as overridden.')
+    mark_as_overridden.short_description = 'Mark as overridden'

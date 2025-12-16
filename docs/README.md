@@ -21,6 +21,7 @@ Complete documentation for the Enginel Engineering Intelligence Kernel.
 - **[Audit Logging](AUDIT_LOGGING.md)** - Compliance audit trail and activity tracking
 - **[Search & Filtering](SEARCH_FILTERING.md)** - Advanced search, filtering, and ordering capabilities
 - **[Caching](CACHING.md)** - Redis-based caching for performance optimization
+- **[Data Validation](DATA_VALIDATION.md)** - Custom validation rules and data integrity checks
 
 ### Operations
 - **[Multi-Tenant Organizations](MULTI_TENANT.md)** - Organization isolation and access control
@@ -40,6 +41,7 @@ Complete documentation for the Enginel Engineering Intelligence Kernel.
 | [Background Jobs](BACKGROUND_JOBS.md) | Async task monitoring | Job tracking, progress monitoring, metrics |
 | [BOM Extraction](BOM_EXTRACTION.md) | Bill of Materials extraction | Assembly parsing, hierarchy, part lists |
 | [Caching](CACHING.md) | Performance optimization | Redis caching, cache strategies, invalidation |
+| [Data Validation](DATA_VALIDATION.md) | Data validation framework | Custom rules, validators, integrity checks, reporting |
 | [Email Notifications](EMAIL_NOTIFICATIONS.md) | Email notification system | User preferences, notification types, delivery |
 | [Error Handling](ERROR_HANDLING.md) | Error tracking & monitoring | Error logging, performance monitoring, debugging |
 | [Multi-Tenant](MULTI_TENANT.md) | Organization management | Multi-tenancy, roles, permissions, isolation |

@@ -1398,3 +1398,351 @@ The Enginel Team
         }, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ============================================================================
+# VALIDATION VIEWS
+# ============================================================================
+
+from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
+from .models import ValidationRule, ValidationResult, Organization
+from .serializers import (
+    ValidationRuleSerializer,
+    ValidationResultSerializer,
+    ValidationOverrideSerializer,
+    FieldValidationSerializer,
+    BatchValidationSerializer,
+    ValidationReportSerializer,
+)
+from .validation_service import ValidationService
+
+
+class ValidationRuleViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing validation rules.
+    
+    Provides CRUD operations for validation rules and statistics.
+    """
+    serializer_class = ValidationRuleSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['rule_type', 'target_model', 'severity', 'is_active', 'organization']
+    search_fields = ['name', 'description', 'target_field']
+    ordering_fields = ['created_at', 'name', 'total_checks', 'total_failures']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Filter rules by user's organization."""
+        user = self.request.user
+        
+        # Superusers see all rules
+        if user.is_staff:
+            return ValidationRule.objects.all()
+        
+        # Users see their organization's rules and global rules
+        return ValidationRule.objects.filter(
+            Q(organization=user.organization) | Q(organization__isnull=True)
+        )
+    
+    def perform_create(self, serializer):
+        """Set created_by to current user."""
+        serializer.save(created_by=self.request.user)
+    
+    @action(detail=True, methods=['post'])
+    def activate(self, request, pk=None):
+        """Activate a validation rule."""
+        rule = self.get_object()
+        rule.is_active = True
+        rule.save(update_fields=['is_active'])
+        
+        return Response({
+            'message': f'Validation rule "{rule.name}" activated',
+            'is_active': True
+        })
+    
+    @action(detail=True, methods=['post'])
+    def deactivate(self, request, pk=None):
+        """Deactivate a validation rule."""
+        rule = self.get_object()
+        rule.is_active = False
+        rule.save(update_fields=['is_active'])
+        
+        return Response({
+            'message': f'Validation rule "{rule.name}" deactivated',
+            'is_active': False
+        })
+    
+    @action(detail=True, methods=['get'])
+    def statistics(self, request, pk=None):
+        """Get statistics for a specific rule."""
+        rule = self.get_object()
+        
+        # Recent results
+        recent_results = ValidationResult.objects.filter(rule=rule).order_by('-validated_at')[:100]
+        
+        # Calculate stats
+        total = recent_results.count()
+        passed = recent_results.filter(status='PASSED').count()
+        failed = recent_results.filter(status='FAILED').count()
+        
+        return Response({
+            'rule': ValidationRuleSerializer(rule).data,
+            'statistics': {
+                'total_checks': rule.total_checks,
+                'total_failures': rule.total_failures,
+                'failure_rate': rule.get_failure_rate(),
+                'recent_100': {
+                    'total': total,
+                    'passed': passed,
+                    'failed': failed,
+                    'pass_rate': round((passed / total * 100), 2) if total > 0 else 0
+                }
+            }
+        })
+
+
+class ValidationResultViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing validation results.
+    
+    Read-only access to validation history.
+    """
+    serializer_class = ValidationResultSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'target_model', 'was_blocked', 'was_overridden']
+    search_fields = ['rule__name', 'error_message', 'target_id']
+    ordering_fields = ['validated_at', 'status']
+    ordering = ['-validated_at']
+    pagination_class = PageNumberPagination
+    
+    def get_queryset(self):
+        """Filter results by user's organization."""
+        user = self.request.user
+        
+        queryset = ValidationResult.objects.select_related(
+            'rule',
+            'validated_by',
+            'override_by'
+        )
+        
+        # Superusers see all results
+        if user.is_staff:
+            return queryset
+        
+        # Users see results for their organization
+        return queryset.filter(
+            Q(rule__organization=user.organization) | Q(rule__organization__isnull=True)
+        )
+    
+    @action(detail=True, methods=['post'])
+    def override(self, request, pk=None):
+        """Override a validation failure."""
+        result = self.get_object()
+        
+        # Validate request
+        serializer = ValidationOverrideSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Check permissions - only staff or org admins can override
+        if not (request.user.is_staff or self._is_org_admin(request.user)):
+            return Response({
+                'error': 'You do not have permission to override validations'
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Override the result
+        result.override(
+            user=request.user,
+            reason=serializer.validated_data['reason']
+        )
+        
+        return Response({
+            'message': 'Validation overridden successfully',
+            'result': ValidationResultSerializer(result).data
+        })
+    
+    def _is_org_admin(self, user):
+        """Check if user is organization admin."""
+        from .models import OrganizationMembership
+        return OrganizationMembership.objects.filter(
+            user=user,
+            role__in=['OWNER', 'ADMIN']
+        ).exists()
+
+
+class ValidateFieldView(APIView):
+    """
+    API view for validating field values.
+    
+    POST /api/validation/validate-field/
+    {
+        "model_name": "DesignAsset",
+        "field_name": "filename",
+        "value": "test.step",
+        "organization_id": "uuid"
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Validate a field value."""
+        serializer = FieldValidationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        data = serializer.validated_data
+        
+        # Get organization
+        organization = None
+        if data.get('organization_id'):
+            organization = Organization.objects.filter(id=data['organization_id']).first()
+        elif request.user.organization:
+            organization = request.user.organization
+        
+        # Run validation
+        service = ValidationService()
+        is_valid, results = service.validate_field_value(
+            model_name=data['model_name'],
+            field_name=data['field_name'],
+            value=data['value'],
+            user=request.user,
+            organization=organization
+        )
+        
+        return Response({
+            'is_valid': is_valid,
+            'field_name': data['field_name'],
+            'value': data['value'],
+            'results': ValidationResultSerializer(results, many=True).data
+        })
+
+
+class ValidateBatchView(APIView):
+    """
+    API view for batch validation.
+    
+    POST /api/validation/validate-batch/
+    {
+        "model_name": "DesignAsset",
+        "operation": "create",
+        "items": [{...}, {...}],
+        "organization_id": "uuid"
+    }
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        """Validate multiple items."""
+        serializer = BatchValidationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        data = serializer.validated_data
+        
+        # Get organization
+        organization = None
+        if data.get('organization_id'):
+            organization = Organization.objects.filter(id=data['organization_id']).first()
+        elif request.user.organization:
+            organization = request.user.organization
+        
+        # Note: Batch validation would need model instances
+        # For now, return structure
+        return Response({
+            'message': 'Batch validation endpoint',
+            'model_name': data['model_name'],
+            'operation': data['operation'],
+            'item_count': len(data['items']),
+            'note': 'Full batch validation requires model instance creation'
+        })
+
+
+class ValidationReportView(APIView):
+    """
+    API view for validation reports.
+    
+    GET /api/validation/report/?model_name=DesignAsset&start_date=...&end_date=...
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Generate validation report."""
+        serializer = ValidationReportSerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        
+        data = serializer.validated_data
+        
+        # Get organization
+        organization = None
+        if data.get('organization_id'):
+            organization = Organization.objects.filter(id=data['organization_id']).first()
+        elif request.user.organization and not request.user.is_staff:
+            organization = request.user.organization
+        
+        # Generate report
+        service = ValidationService()
+        report = service.get_validation_report(
+            model_name=data.get('model_name'),
+            start_date=data.get('start_date'),
+            end_date=data.get('end_date'),
+            organization=organization
+        )
+        
+        return Response(report)
+
+
+class ValidationStatisticsView(APIView):
+    """
+    API view for validation statistics summary.
+    
+    GET /api/validation/statistics/
+    """
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        """Get validation statistics."""
+        user = request.user
+        
+        # Get user's organization
+        organization = user.organization if not user.is_staff else None
+        
+        # Get rules count
+        rules_query = ValidationRule.objects.filter(is_active=True)
+        if organization:
+            rules_query = rules_query.filter(
+                Q(organization=organization) | Q(organization__isnull=True)
+            )
+        
+        total_rules = rules_query.count()
+        rules_by_type = {}
+        for rule in rules_query:
+            rules_by_type[rule.rule_type] = rules_by_type.get(rule.rule_type, 0) + 1
+        
+        # Get recent results
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        last_7_days = timezone.now() - timedelta(days=7)
+        
+        results_query = ValidationResult.objects.filter(validated_at__gte=last_7_days)
+        if organization:
+            results_query = results_query.filter(
+                Q(rule__organization=organization) | Q(rule__organization__isnull=True)
+            )
+        
+        total_checks = results_query.count()
+        passed = results_query.filter(status='PASSED').count()
+        failed = results_query.filter(status='FAILED').count()
+        blocked = results_query.filter(was_blocked=True).count()
+        
+        return Response({
+            'rules': {
+                'total_active': total_rules,
+                'by_type': rules_by_type
+            },
+            'last_7_days': {
+                'total_checks': total_checks,
+                'passed': passed,
+                'failed': failed,
+                'blocked': blocked,
+                'pass_rate': round((passed / total_checks * 100), 2) if total_checks > 0 else 0
+            }
+        })
+

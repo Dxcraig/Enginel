@@ -12,6 +12,8 @@ Models:
 - ReviewSession: Collaborative design review container
 - Markup: 3D annotations/comments on designs
 - AuditLog: Immutable compliance audit trail
+- ValidationRule: Custom validation rules for data integrity
+- ValidationResult: Results from validation checks
 """
 import uuid
 from django.contrib.auth.models import AbstractUser
@@ -1367,5 +1369,308 @@ class EmailNotification(models.Model):
         
         if self.next_retry_at and timezone.now() < self.next_retry_at:
             return False
+        
+        return True
+
+
+class ValidationRule(models.Model):
+    """
+    Custom validation rules for data integrity checks.
+    
+    Defines reusable validation rules that can be applied to different
+    models and fields. Rules can be built-in or custom Python expressions.
+    """
+    
+    RULE_TYPE_CHOICES = [
+        ('REGEX', 'Regular Expression'),
+        ('RANGE', 'Numeric Range'),
+        ('LENGTH', 'String Length'),
+        ('FORMAT', 'Format Validation'),
+        ('CUSTOM', 'Custom Python Expression'),
+        ('FILE_TYPE', 'File Type Validation'),
+        ('FILE_SIZE', 'File Size Validation'),
+        ('UNIQUENESS', 'Uniqueness Check'),
+        ('RELATIONSHIP', 'Relationship Validation'),
+        ('BUSINESS_RULE', 'Business Logic Rule'),
+    ]
+    
+    SEVERITY_CHOICES = [
+        ('INFO', 'Informational'),
+        ('WARNING', 'Warning'),
+        ('ERROR', 'Error'),
+        ('CRITICAL', 'Critical'),
+    ]
+    
+    TARGET_MODEL_CHOICES = [
+        ('DesignAsset', 'Design Asset'),
+        ('DesignSeries', 'Design Series'),
+        ('Organization', 'Organization'),
+        ('CustomUser', 'User'),
+        ('ReviewSession', 'Review Session'),
+        ('Markup', 'Markup'),
+        ('AssemblyNode', 'Assembly Node'),
+        ('*', 'All Models'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Rule definition
+    name = models.CharField(
+        max_length=255,
+        unique=True,
+        help_text="Unique name for this validation rule"
+    )
+    
+    description = models.TextField(
+        help_text="Description of what this rule validates"
+    )
+    
+    rule_type = models.CharField(
+        max_length=20,
+        choices=RULE_TYPE_CHOICES,
+        help_text="Type of validation to perform"
+    )
+    
+    target_model = models.CharField(
+        max_length=50,
+        choices=TARGET_MODEL_CHOICES,
+        help_text="Model this rule applies to"
+    )
+    
+    target_field = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Specific field to validate (leave blank for model-level validation)"
+    )
+    
+    # Rule configuration
+    rule_config = models.JSONField(
+        default=dict,
+        help_text="Configuration for the rule (regex pattern, min/max values, etc.)"
+    )
+    
+    error_message = models.CharField(
+        max_length=500,
+        help_text="Error message to display when validation fails"
+    )
+    
+    severity = models.CharField(
+        max_length=20,
+        choices=SEVERITY_CHOICES,
+        default='ERROR',
+        help_text="Severity level of validation failure"
+    )
+    
+    # Conditional application
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this rule is currently active"
+    )
+    
+    apply_on_create = models.BooleanField(
+        default=True,
+        help_text="Apply validation when creating new records"
+    )
+    
+    apply_on_update = models.BooleanField(
+        default=True,
+        help_text="Apply validation when updating existing records"
+    )
+    
+    conditions = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Conditional logic for when to apply this rule"
+    )
+    
+    # Organization scope (for multi-tenant rules)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='validation_rules',
+        null=True,
+        blank=True,
+        help_text="If set, rule only applies to this organization"
+    )
+    
+    # Metadata
+    created_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='created_validation_rules'
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Statistics
+    total_checks = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of times this rule has been checked"
+    )
+    
+    total_failures = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of validation failures"
+    )
+    
+    class Meta:
+        db_table = 'validation_rules'
+        verbose_name = 'Validation Rule'
+        verbose_name_plural = 'Validation Rules'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['target_model', 'target_field']),
+            models.Index(fields=['is_active']),
+            models.Index(fields=['organization']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.rule_type})"
+    
+    def get_failure_rate(self):
+        """Calculate validation failure rate."""
+        if self.total_checks == 0:
+            return 0.0
+        return round((self.total_failures / self.total_checks) * 100, 2)
+    
+    def increment_checks(self):
+        """Increment total checks counter."""
+        self.total_checks += 1
+        self.save(update_fields=['total_checks'])
+    
+    def increment_failures(self):
+        """Increment total failures counter."""
+        self.total_failures += 1
+        self.save(update_fields=['total_failures'])
+
+
+class ValidationResult(models.Model):
+    """
+    Results from validation checks performed on data.
+    
+    Stores the outcome of validation rules applied to specific records,
+    enabling audit trails and validation reporting.
+    """
+    
+    STATUS_CHOICES = [
+        ('PASSED', 'Passed'),
+        ('FAILED', 'Failed'),
+        ('SKIPPED', 'Skipped'),
+        ('ERROR', 'Validation Error'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # What was validated
+    rule = models.ForeignKey(
+        ValidationRule,
+        on_delete=models.CASCADE,
+        related_name='results',
+        help_text="Validation rule that was applied"
+    )
+    
+    target_model = models.CharField(
+        max_length=50,
+        help_text="Model that was validated"
+    )
+    
+    target_id = models.UUIDField(
+        help_text="ID of the record that was validated"
+    )
+    
+    target_field = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Specific field that was validated"
+    )
+    
+    # Validation outcome
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        help_text="Outcome of the validation"
+    )
+    
+    error_message = models.TextField(
+        blank=True,
+        help_text="Error message if validation failed"
+    )
+    
+    details = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Detailed validation results and context"
+    )
+    
+    # Context
+    validated_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='validation_results',
+        help_text="User who triggered the validation"
+    )
+    
+    validated_at = models.DateTimeField(auto_now_add=True)
+    
+    # Action taken
+    was_blocked = models.BooleanField(
+        default=False,
+        help_text="Whether the operation was blocked due to validation failure"
+    )
+    
+    was_overridden = models.BooleanField(
+        default=False,
+        help_text="Whether validation failure was overridden by user"
+    )
+    
+    override_reason = models.TextField(
+        blank=True,
+        help_text="Reason for overriding validation failure"
+    )
+    
+    override_by = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='validation_overrides',
+        help_text="User who overrode the validation"
+    )
+    
+    override_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When validation was overridden"
+    )
+    
+    class Meta:
+        db_table = 'validation_results'
+        verbose_name = 'Validation Result'
+        verbose_name_plural = 'Validation Results'
+        ordering = ['-validated_at']
+        indexes = [
+            models.Index(fields=['target_model', 'target_id']),
+            models.Index(fields=['status']),
+            models.Index(fields=['validated_at']),
+            models.Index(fields=['was_blocked']),
+        ]
+    
+    def __str__(self):
+        return f"{self.rule.name} on {self.target_model}:{self.target_id} - {self.status}"
+    
+    def override(self, user, reason):
+        """Override a failed validation."""
+        if self.status != 'FAILED':
+            return False
+        
+        self.was_overridden = True
+        self.override_reason = reason
+        self.override_by = user
+        self.override_at = timezone.now()
+        self.save(update_fields=['was_overridden', 'override_reason', 'override_by', 'override_at'])
         
         return True

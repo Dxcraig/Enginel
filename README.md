@@ -219,6 +219,7 @@ Complete API documentation is available in the [`docs/`](docs/) folder:
 - [Unit Conversion](docs/UNIT_CONVERSION.md) - Automatic unit handling
 - [Search & Filtering](docs/SEARCH_FILTERING.md) - Advanced search capabilities
 - [Caching](docs/CACHING.md) - Redis performance optimization
+- [Data Validation](docs/DATA_VALIDATION.md) - Custom validation rules and integrity checks
 - [Email Notifications](docs/EMAIL_NOTIFICATIONS.md) - User notifications
 - [Error Handling](docs/ERROR_HANDLING.md) - Error tracking and monitoring
 
@@ -274,6 +275,7 @@ Enginel/
 - ✅ Comprehensive audit logging
 - ✅ Advanced search and filtering
 - ✅ Redis caching layer
+- ✅ Data validation system with custom rules
 - ✅ Email notification system
 - ✅ Design review workflows
 - ✅ 3D markup/annotation system

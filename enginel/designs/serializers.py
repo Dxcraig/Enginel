@@ -8,7 +8,8 @@ from .models import (
     Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
-    APIKey, RefreshToken, NotificationPreference, EmailNotification
+    APIKey, RefreshToken, NotificationPreference, EmailNotification,
+    ValidationRule, ValidationResult
 )
 
 
@@ -683,3 +684,216 @@ class EmailNotificationSerializer(serializers.ModelSerializer):
             'error_message',
         ]
 
+
+class ValidationRuleSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ValidationRule model.
+    """
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    organization_name = serializers.CharField(source='organization.name', read_only=True)
+    failure_rate = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = ValidationRule
+        fields = [
+            'id',
+            'name',
+            'description',
+            'rule_type',
+            'target_model',
+            'target_field',
+            'rule_config',
+            'error_message',
+            'severity',
+            'is_active',
+            'apply_on_create',
+            'apply_on_update',
+            'conditions',
+            'organization',
+            'organization_name',
+            'created_by',
+            'created_by_username',
+            'created_at',
+            'updated_at',
+            'total_checks',
+            'total_failures',
+            'failure_rate',
+        ]
+        read_only_fields = [
+            'id',
+            'created_at',
+            'updated_at',
+            'total_checks',
+            'total_failures',
+            'failure_rate',
+        ]
+    
+    def get_failure_rate(self, obj):
+        """Calculate failure rate percentage."""
+        return obj.get_failure_rate()
+    
+    def validate_rule_config(self, value):
+        """Validate rule configuration based on rule type."""
+        rule_type = self.initial_data.get('rule_type')
+        
+        if rule_type == 'REGEX' and 'pattern' not in value:
+            raise serializers.ValidationError("REGEX rules require 'pattern' in config")
+        
+        if rule_type == 'RANGE' and not ('min' in value or 'max' in value):
+            raise serializers.ValidationError("RANGE rules require 'min' and/or 'max' in config")
+        
+        if rule_type == 'LENGTH' and not ('min' in value or 'max' in value):
+            raise serializers.ValidationError("LENGTH rules require 'min' and/or 'max' in config")
+        
+        if rule_type == 'FILE_TYPE' and 'allowed_types' not in value:
+            raise serializers.ValidationError("FILE_TYPE rules require 'allowed_types' in config")
+        
+        if rule_type == 'FILE_SIZE' and not ('min_size' in value or 'max_size' in value):
+            raise serializers.ValidationError("FILE_SIZE rules require 'min_size' and/or 'max_size' in config")
+        
+        if rule_type == 'CUSTOM' and 'expression' not in value:
+            raise serializers.ValidationError("CUSTOM rules require 'expression' in config")
+        
+        if rule_type == 'BUSINESS_RULE' and 'rule_name' not in value:
+            raise serializers.ValidationError("BUSINESS_RULE rules require 'rule_name' in config")
+        
+        return value
+    
+    def validate_name(self, value):
+        """Ensure rule name is unique."""
+        if ValidationRule.objects.filter(name=value).exclude(id=self.instance.id if self.instance else None).exists():
+            raise serializers.ValidationError("A validation rule with this name already exists")
+        return value
+
+
+class ValidationResultSerializer(serializers.ModelSerializer):
+    """
+    Serializer for ValidationResult model.
+    """
+    rule_name = serializers.CharField(source='rule.name', read_only=True)
+    rule_type = serializers.CharField(source='rule.rule_type', read_only=True)
+    rule_severity = serializers.CharField(source='rule.severity', read_only=True)
+    validated_by_username = serializers.CharField(source='validated_by.username', read_only=True)
+    override_by_username = serializers.CharField(source='override_by.username', read_only=True)
+    
+    class Meta:
+        model = ValidationResult
+        fields = [
+            'id',
+            'rule',
+            'rule_name',
+            'rule_type',
+            'rule_severity',
+            'target_model',
+            'target_id',
+            'target_field',
+            'status',
+            'error_message',
+            'details',
+            'validated_by',
+            'validated_by_username',
+            'validated_at',
+            'was_blocked',
+            'was_overridden',
+            'override_reason',
+            'override_by',
+            'override_by_username',
+            'override_at',
+        ]
+        read_only_fields = [
+            'id',
+            'validated_at',
+            'validated_by',
+        ]
+
+
+class ValidationOverrideSerializer(serializers.Serializer):
+    """
+    Serializer for overriding validation failures.
+    """
+    reason = serializers.CharField(
+        required=True,
+        max_length=500,
+        help_text="Reason for overriding the validation failure"
+    )
+    
+    def validate_reason(self, value):
+        """Ensure reason is provided."""
+        if not value or len(value.strip()) < 10:
+            raise serializers.ValidationError("Override reason must be at least 10 characters")
+        return value
+
+
+class FieldValidationSerializer(serializers.Serializer):
+    """
+    Serializer for validating field values.
+    """
+    model_name = serializers.CharField(
+        required=True,
+        help_text="Name of the model (e.g., 'DesignAsset')"
+    )
+    field_name = serializers.CharField(
+        required=True,
+        help_text="Name of the field to validate"
+    )
+    value = serializers.JSONField(
+        required=True,
+        help_text="Value to validate"
+    )
+    organization_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="Organization context for validation"
+    )
+
+
+class BatchValidationSerializer(serializers.Serializer):
+    """
+    Serializer for batch validation requests.
+    """
+    items = serializers.ListField(
+        child=serializers.JSONField(),
+        min_length=1,
+        max_length=100,
+        help_text="List of items to validate (max 100)"
+    )
+    model_name = serializers.CharField(
+        required=True,
+        help_text="Name of the model"
+    )
+    operation = serializers.ChoiceField(
+        choices=['create', 'update'],
+        default='create',
+        help_text="Operation type"
+    )
+    organization_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="Organization context"
+    )
+
+
+class ValidationReportSerializer(serializers.Serializer):
+    """
+    Serializer for validation report parameters.
+    """
+    model_name = serializers.CharField(
+        required=False,
+        allow_null=True,
+        help_text="Filter by model name"
+    )
+    start_date = serializers.DateTimeField(
+        required=False,
+        allow_null=True,
+        help_text="Report start date"
+    )
+    end_date = serializers.DateTimeField(
+        required=False,
+        allow_null=True,
+        help_text="Report end date"
+    )
+    organization_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="Filter by organization"
+    )
