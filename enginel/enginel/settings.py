@@ -242,3 +242,24 @@ TOKEN_EXPIRATION_HOURS = int(os.getenv('TOKEN_EXPIRATION_HOURS', '24'))  # 24 ho
 API_KEY_EXPIRATION_DAYS = int(os.getenv('API_KEY_EXPIRATION_DAYS', '365'))  # 1 year default
 REFRESH_TOKEN_EXPIRATION_DAYS = int(os.getenv('REFRESH_TOKEN_EXPIRATION_DAYS', '30'))  # 30 days default
 
+# Email Configuration
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_USE_SSL = os.getenv('EMAIL_USE_SSL', 'False') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'noreply@enginel.example.com')
+SERVER_EMAIL = os.getenv('SERVER_EMAIL', 'server@enginel.example.com')
+
+# Notification Configuration
+NOTIFICATIONS_ENABLED = os.getenv('NOTIFICATIONS_ENABLED', 'True') == 'True'
+NOTIFICATION_BATCH_SIZE = int(os.getenv('NOTIFICATION_BATCH_SIZE', '50'))
+NOTIFICATION_RETRY_DELAY = int(os.getenv('NOTIFICATION_RETRY_DELAY', '300'))  # 5 minutes
+NOTIFICATION_MAX_RETRIES = int(os.getenv('NOTIFICATION_MAX_RETRIES', '3'))
+
+# Email Rate Limiting
+EMAIL_RATE_LIMIT_PER_USER = int(os.getenv('EMAIL_RATE_LIMIT_PER_USER', '100'))  # Per hour
+EMAIL_RATE_LIMIT_WINDOW = int(os.getenv('EMAIL_RATE_LIMIT_WINDOW', '3600'))  # 1 hour in seconds
+

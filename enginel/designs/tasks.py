@@ -16,6 +16,7 @@ import time
 from celery import shared_task
 from django.core.files.storage import default_storage
 from django.utils import timezone
+from django.db import models
 from .models import DesignAsset, AnalysisJob, AssemblyNode
 from .geometry_processor import GeometryProcessor, GEOMETRY_AVAILABLE
 from .unit_converter import (
@@ -670,3 +671,198 @@ def create_analysis_job(self, design_asset_id, job_type):
     except Exception as exc:
         logger.error(f"Error creating analysis job: {exc}")
         raise
+
+
+# Email Notification Tasks
+
+@shared_task(bind=True, max_retries=3)
+def send_email_notification(self, notification_id):
+    """
+    Send a single email notification.
+    
+    Args:
+        notification_id: UUID of the EmailNotification to send
+    
+    Returns:
+        Dict with status and details
+    """
+    from .models import EmailNotification
+    from .notifications import EmailSender
+    
+    try:
+        notification = EmailNotification.objects.get(id=notification_id)
+        
+        # Check if notification can be sent
+        if not notification.can_send_now():
+            logger.info(f"Notification {notification_id} cannot be sent now")
+            return {
+                'notification_id': str(notification_id),
+                'status': 'SKIPPED',
+                'reason': 'Cannot send now (retry scheduled or max retries exceeded)'
+            }
+        
+        # Send notification
+        success = EmailSender.send_notification(notification)
+        
+        return {
+            'notification_id': str(notification_id),
+            'status': 'SENT' if success else 'FAILED',
+            'recipient': notification.recipient.email,
+            'type': notification.notification_type,
+        }
+        
+    except EmailNotification.DoesNotExist:
+        logger.error(f"Notification {notification_id} not found")
+        raise
+    except Exception as exc:
+        logger.error(f"Error sending notification {notification_id}: {exc}")
+        
+        # Retry with exponential backoff
+        try:
+            notification = EmailNotification.objects.get(id=notification_id)
+            notification.mark_failed(str(exc))
+        except:
+            pass
+        
+        raise self.retry(exc=exc, countdown=60 * (2 ** self.request.retries))
+
+
+@shared_task
+def process_pending_notifications():
+    """
+    Process all pending email notifications in batch.
+    
+    This task runs periodically (e.g., every 5 minutes) to process
+    notifications based on user delivery preferences (immediate, digest).
+    
+    Returns:
+        Dict with processing statistics
+    """
+    from django.conf import settings
+    from .models import EmailNotification
+    from .notifications import EmailSender
+    
+    # Get pending notifications, prioritized
+    pending = EmailNotification.objects.filter(
+        status='PENDING'
+    ).filter(
+        models.Q(next_retry_at__isnull=True) | models.Q(next_retry_at__lte=timezone.now())
+    ).order_by(
+        '-priority',  # HIGH before NORMAL
+        'queued_at'   # Oldest first
+    )[:settings.NOTIFICATION_BATCH_SIZE]
+    
+    if not pending:
+        logger.info("No pending notifications to process")
+        return {'processed': 0, 'sent': 0, 'failed': 0}
+    
+    logger.info(f"Processing {len(pending)} pending notifications")
+    
+    # Send in batch
+    results = EmailSender.send_batch(pending)
+    
+    return {
+        'processed': len(pending),
+        'sent': results['sent'],
+        'failed': results['failed'],
+    }
+
+
+@shared_task
+def send_digest_notifications():
+    """
+    Send digest emails for users who prefer batched notifications.
+    
+    This task runs hourly/daily/weekly based on user preferences
+    and bundles multiple notifications into a single email.
+    """
+    from django.conf import settings
+    from django.db.models import Q
+    from .models import EmailNotification, NotificationPreference, CustomUser
+    from .notifications import EmailSender
+    
+    # For now, we'll just handle hourly digests
+    # You can expand this to handle daily/weekly
+    
+    # Get users with digest preference
+    digest_users = CustomUser.objects.filter(
+        notification_preferences__delivery_method='HOURLY',
+        notification_preferences__email_enabled=True
+    )
+    
+    results = {'users_processed': 0, 'digests_sent': 0}
+    
+    for user in digest_users:
+        # Get pending notifications for this user
+        notifications = EmailNotification.objects.filter(
+            recipient=user,
+            status='PENDING',
+            queued_at__gte=timezone.now() - timezone.timedelta(hours=1)
+        ).order_by('-priority', 'queued_at')
+        
+        if not notifications:
+            continue
+        
+        # Create digest email
+        subject = f"Enginel Digest - {notifications.count()} notifications"
+        
+        message_parts = [
+            f"Hello {user.first_name or user.username},",
+            "",
+            f"You have {notifications.count()} new notifications:",
+            "",
+        ]
+        
+        for notif in notifications:
+            message_parts.append(f"• {notif.subject}")
+            message_parts.append(f"  {notif.message_plain[:100]}...")
+            message_parts.append("")
+        
+        message_parts.extend([
+            "Log in to Enginel to view all notifications.",
+            "",
+            "Best regards,",
+            "The Enginel Team"
+        ])
+        
+        message = "\n".join(message_parts)
+        
+        # Create and send digest notification
+        digest_notif = EmailNotification.objects.create(
+            recipient=user,
+            notification_type='DIGEST',
+            subject=subject,
+            message_plain=message,
+            priority='NORMAL',
+            status='PENDING',
+        )
+        
+        if EmailSender.send_notification(digest_notif):
+            # Mark bundled notifications as sent
+            notifications.update(status='SENT', sent_at=timezone.now())
+            results['digests_sent'] += 1
+        
+        results['users_processed'] += 1
+    
+    return results
+
+
+@shared_task
+def cleanup_old_notifications():
+    """
+    Clean up old sent/failed notifications to keep database clean.
+    
+    Removes notifications older than 30 days (configurable).
+    """
+    from .models import EmailNotification
+    
+    cutoff_date = timezone.now() - timezone.timedelta(days=30)
+    
+    deleted_count, _ = EmailNotification.objects.filter(
+        status__in=['SENT', 'CANCELLED'],
+        queued_at__lt=cutoff_date
+    ).delete()
+    
+    logger.info(f"Cleaned up {deleted_count} old notifications")
+    
+    return {'deleted': deleted_count, 'cutoff_date': cutoff_date.isoformat()}

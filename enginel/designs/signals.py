@@ -1,9 +1,11 @@
 """
-Django signals for automatic cache invalidation.
+Django signals for automatic cache invalidation and email notifications.
 
-Listens for model save/delete events and invalidates related caches.
+Listens for model save/delete events and:
+- Invalidates related caches
+- Triggers email notifications for important events
 """
-from django.db.models.signals import post_save, post_delete, m2m_changed
+from django.db.models.signals import post_save, post_delete, m2m_changed, pre_save
 from django.dispatch import receiver
 from designs.models import (
     Organization, CustomUser, DesignSeries, DesignAsset,
@@ -174,3 +176,134 @@ def invalidate_review_participants_cache(sender, instance, action, **kwargs):
         cache_manager.delete(CacheKey.review_detail(str(instance.id)))
         
         logger.debug(f"Invalidated reviewers cache for review {instance.id}")
+
+
+# Email Notification Signals
+
+@receiver(post_save, sender=DesignAsset)
+def notify_design_uploaded(sender, instance, created, **kwargs):
+    """
+    Notify organization members when a new design is uploaded.
+    """
+    from django.conf import settings
+    from designs.notifications import NotificationService
+    
+    if created and settings.NOTIFICATIONS_ENABLED:
+        try:
+            NotificationService.notify_design_uploaded(instance)
+            logger.info(f"Queued upload notifications for design {instance.id}")
+        except Exception as e:
+            logger.error(f"Error queuing upload notifications: {e}")
+
+
+@receiver(pre_save, sender=DesignAsset)
+def track_design_status_change(sender, instance, **kwargs):
+    """
+    Track design status changes to trigger appropriate notifications.
+    """
+    if instance.pk:  # Only for updates, not creates
+        try:
+            old_instance = DesignAsset.objects.get(pk=instance.pk)
+            
+            # Check if status changed
+            if old_instance.status != instance.status:
+                # Store old status for post_save signal
+                instance._old_status = old_instance.status
+        except DesignAsset.DoesNotExist:
+            pass
+
+
+@receiver(post_save, sender=DesignAsset)
+def notify_design_status_change(sender, instance, created, **kwargs):
+    """
+    Notify design owner when design status changes (approved/rejected).
+    """
+    from django.conf import settings
+    from designs.notifications import NotificationService
+    
+    if created or not settings.NOTIFICATIONS_ENABLED:
+        return
+    
+    old_status = getattr(instance, '_old_status', None)
+    
+    if old_status and old_status != instance.status:
+        try:
+            if instance.status == 'APPROVED':
+                NotificationService.notify_design_approved(instance)
+                logger.info(f"Queued approval notification for design {instance.id}")
+            
+            elif instance.status == 'REJECTED':
+                NotificationService.notify_design_rejected(instance)
+                logger.info(f"Queued rejection notification for design {instance.id}")
+        
+        except Exception as e:
+            logger.error(f"Error queuing status change notification: {e}")
+
+
+@receiver(post_save, sender=ReviewSession)
+def notify_review_lifecycle(sender, instance, created, **kwargs):
+    """
+    Notify design owner about review session lifecycle events.
+    """
+    from django.conf import settings
+    from designs.notifications import NotificationService
+    
+    if not settings.NOTIFICATIONS_ENABLED:
+        return
+    
+    try:
+        if created:
+            # Review session started
+            NotificationService.notify_review_started(instance)
+            logger.info(f"Queued review start notification for session {instance.id}")
+        else:
+            # Check if review was completed
+            if instance.status in ['APPROVED', 'REJECTED', 'COMPLETED']:
+                # Avoid duplicate notifications - check if we already notified
+                if not hasattr(instance, '_notified'):
+                    NotificationService.notify_review_completed(instance)
+                    instance._notified = True
+                    logger.info(f"Queued review completion notification for session {instance.id}")
+    
+    except Exception as e:
+        logger.error(f"Error queuing review notification: {e}")
+
+
+@receiver(post_save, sender=Markup)
+def notify_markup_created(sender, instance, created, **kwargs):
+    """
+    Notify design owner when someone adds a markup/comment.
+    """
+    from django.conf import settings
+    from designs.notifications import NotificationService
+    
+    if created and settings.NOTIFICATIONS_ENABLED:
+        try:
+            NotificationService.notify_markup_added(instance)
+            logger.info(f"Queued markup notification for markup {instance.id}")
+        except Exception as e:
+            logger.error(f"Error queuing markup notification: {e}")
+
+
+@receiver(post_save, sender=AnalysisJob)
+def notify_job_status_change(sender, instance, created, **kwargs):
+    """
+    Notify user when their background job completes or fails.
+    """
+    from django.conf import settings
+    from designs.notifications import NotificationService
+    
+    if created or not settings.NOTIFICATIONS_ENABLED:
+        return
+    
+    try:
+        if instance.status == 'SUCCESS':
+            NotificationService.notify_job_completed(instance)
+            logger.info(f"Queued job completion notification for job {instance.id}")
+        
+        elif instance.status == 'FAILURE':
+            NotificationService.notify_job_failed(instance)
+            logger.info(f"Queued job failure notification for job {instance.id}")
+    
+    except Exception as e:
+        logger.error(f"Error queuing job notification: {e}")

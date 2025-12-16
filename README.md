@@ -200,24 +200,55 @@ GET /api/admin/audit-logs/
 ```
 View immutable access history for compliance reporting.
 
+## 📚 Documentation
+
+Complete API documentation is available in the [`docs/`](docs/) folder:
+
+- **[API Documentation Index](docs/README.md)** - Complete documentation overview
+- **[API Quick Start](docs/API_QUICKSTART.md)** - Get started in 5 minutes
+- **[API Reference](docs/API_REFERENCE.md)** - All endpoints and schemas
+- **[OpenAPI Specification](docs/openapi.yaml)** - Swagger/OpenAPI spec
+
+### Feature Documentation
+
+- [Authentication](docs/AUTHENTICATION.md) - Token auth, API keys, security
+- [Multi-Tenant Organizations](docs/MULTI_TENANT.md) - Organization management
+- [Audit Logging](docs/AUDIT_LOGGING.md) - Compliance audit trails
+- [Background Jobs](docs/BACKGROUND_JOBS.md) - Async task monitoring
+- [BOM Extraction](docs/BOM_EXTRACTION.md) - Bill of Materials parsing
+- [Unit Conversion](docs/UNIT_CONVERSION.md) - Automatic unit handling
+- [Search & Filtering](docs/SEARCH_FILTERING.md) - Advanced search capabilities
+- [Caching](docs/CACHING.md) - Redis performance optimization
+- [Email Notifications](docs/EMAIL_NOTIFICATIONS.md) - User notifications
+- [Error Handling](docs/ERROR_HANDLING.md) - Error tracking and monitoring
+
 ## 📁 Project Structure
 
 ```
 Enginel/
 ├── docker-compose.yml       # Multi-container orchestration
 ├── Dockerfile              # Application container definition
-├── .env                    # Environment variables (create this)
+├── .env                    # Environment variables
+├── docs/                   # 📚 Complete API documentation
+│   ├── README.md           # Documentation index
+│   ├── API_REFERENCE.md    # REST API reference
+│   ├── API_QUICKSTART.md   # Getting started guide
+│   ├── openapi.yaml        # OpenAPI 3.0 specification
+│   └── *.md                # Feature-specific guides
 └── enginel/
     ├── manage.py           # Django management script
     ├── requirements.txt    # Python dependencies
-    ├── db.sqlite3          # Local SQLite (dev only)
     ├── designs/            # Main app (DesignAsset models)
     │   ├── models.py       # Data models
     │   ├── views.py        # API views
+    │   ├── serializers.py  # DRF serializers
+    │   ├── tasks.py        # Celery tasks
+    │   ├── notifications.py # Email notification service
     │   └── migrations/     # Database migrations
     └── enginel/            # Project settings
         ├── settings.py     # Django configuration
         ├── urls.py         # URL routing
+        ├── celery.py       # Celery configuration
         └── wsgi.py         # WSGI entry point
 ```
 
@@ -229,21 +260,26 @@ Enginel/
 - **Immutable Audit Logs**: Tamper-evident compliance logging
 - **Attribute-Based Access Control**: Granular permissions based on user attributes
 
-## 🧪 Development Roadmap
+## 🧪 Development Status
 
-- [ ] Implement Celery workers for async geometry processing
-- [ ] Integrate OpenCASCADE/PythonOCC for STEP file parsing
-- [ ] Add Design Rule Check (DRC) validation engine
-- [ ] Implement unit conversion/normalization system
-- [ ] Deploy Redis for task queue management
-- [ ] Configure AWS S3 integration with pre-signed URLs
-- [ ] Add comprehensive audit logging middleware
-- [ ] Implement ITAR access control decorators
+✅ **Completed Features:**
+- ✅ REST API with 60+ endpoints
+- ✅ Token authentication with refresh tokens and API keys
+- ✅ Multi-tenant organization management
+- ✅ CAD file upload and processing (STEP/IGES)
+- ✅ Bill of Materials (BOM) extraction
+- ✅ Celery async task processing
+- ✅ Background job monitoring and metrics
+- ✅ Unit conversion and normalization
+- ✅ Comprehensive audit logging
+- ✅ Advanced search and filtering
+- ✅ Redis caching layer
+- ✅ Email notification system
+- ✅ Design review workflows
+- ✅ 3D markup/annotation system
+- ✅ Error tracking and monitoring
+- ✅ OpenAPI 3.0 specification
 
 ## 📄 License
 
-[Add your license here]
-
-## 🤝 Contributing
-
-[Add contribution guidelines here]
+Proprietary - All rights reserved

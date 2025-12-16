@@ -1229,3 +1229,172 @@ def performance_stats(request):
     return Response(stats)
 
 
+# Notification Management Views
+
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def notification_preferences(request):
+    """
+    Get or update current user's notification preferences.
+    
+    GET /api/notifications/preferences/
+    - Returns user's notification preferences
+    
+    PATCH /api/notifications/preferences/
+    - Updates notification preferences
+    
+    Request body (PATCH):
+    {
+        "email_enabled": true,
+        "notify_design_uploaded": true,
+        "delivery_method": "IMMEDIATE",
+        "quiet_hours_enabled": false
+    }
+    """
+    from .models import NotificationPreference
+    from .serializers import NotificationPreferenceSerializer
+    from .notifications import NotificationService
+    
+    # Get or create preferences
+    prefs = NotificationService.get_or_create_preferences(request.user)
+    
+    if request.method == 'GET':
+        serializer = NotificationPreferenceSerializer(prefs)
+        return Response(serializer.data)
+    
+    elif request.method == 'PATCH':
+        serializer = NotificationPreferenceSerializer(
+            prefs,
+            data=request.data,
+            partial=True
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def notification_history(request):
+    """
+    Get current user's notification history.
+    
+    GET /api/notifications/history/
+    
+    Query parameters:
+    - status: Filter by status (PENDING, SENT, FAILED)
+    - type: Filter by notification type
+    - page: Page number (default: 1)
+    - page_size: Items per page (default: 50)
+    """
+    from .models import EmailNotification
+    from .serializers import EmailNotificationSerializer
+    from rest_framework.pagination import PageNumberPagination
+    
+    # Build queryset
+    notifications = EmailNotification.objects.filter(
+        recipient=request.user
+    ).order_by('-queued_at')
+    
+    # Apply filters
+    status_filter = request.GET.get('status')
+    if status_filter:
+        notifications = notifications.filter(status=status_filter)
+    
+    type_filter = request.GET.get('type')
+    if type_filter:
+        notifications = notifications.filter(notification_type=type_filter)
+    
+    # Paginate
+    paginator = PageNumberPagination()
+    paginator.page_size = int(request.GET.get('page_size', 50))
+    page = paginator.paginate_queryset(notifications, request)
+    
+    serializer = EmailNotificationSerializer(page, many=True)
+    
+    return paginator.get_paginated_response(serializer.data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def notification_stats(request):
+    """
+    Get notification statistics for current user.
+    
+    GET /api/notifications/stats/
+    
+    Returns counts by status and type.
+    """
+    from .models import EmailNotification
+    from django.db.models import Count
+    
+    # Count by status
+    status_counts = EmailNotification.objects.filter(
+        recipient=request.user
+    ).values('status').annotate(count=Count('id'))
+    
+    # Count by type
+    type_counts = EmailNotification.objects.filter(
+        recipient=request.user
+    ).values('notification_type').annotate(count=Count('id'))
+    
+    # Recent unread count
+    recent_pending = EmailNotification.objects.filter(
+        recipient=request.user,
+        status='PENDING'
+    ).count()
+    
+    return Response({
+        'by_status': {item['status']: item['count'] for item in status_counts},
+        'by_type': {item['notification_type']: item['count'] for item in type_counts},
+        'pending_count': recent_pending,
+    })
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def test_notification(request):
+    """
+    Send a test notification to current user.
+    
+    POST /api/notifications/test/
+    
+    Useful for testing email configuration.
+    """
+    from .notifications import NotificationService
+    
+    notification = NotificationService.create_notification(
+        recipient=request.user,
+        notification_type='SECURITY_ALERT',
+        subject='Test Notification from Enginel',
+        message_plain=f"""
+Hello {request.user.first_name or request.user.username},
+
+This is a test notification to verify your email settings are configured correctly.
+
+If you received this email, your notifications are working properly!
+
+Best regards,
+The Enginel Team
+        """.strip(),
+        priority='NORMAL'
+    )
+    
+    if notification:
+        return Response({
+            'message': 'Test notification queued successfully',
+            'notification_id': str(notification.id),
+            'recipient': request.user.email,
+        })
+    else:
+        return Response({
+            'message': 'Notification not sent (disabled or rate limited)',
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+

@@ -8,7 +8,8 @@ from django.utils.html import format_html
 from django.db.models import Count
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
-    AnalysisJob, ReviewSession, Markup, AuditLog
+    AnalysisJob, ReviewSession, Markup, AuditLog,
+    NotificationPreference, EmailNotification
 )
 
 
@@ -625,3 +626,172 @@ class AuditLogAdmin(admin.ModelAdmin):
         formatted = json.dumps(obj.changes, indent=2)
         return format_html('<pre style="margin:0;">{}</pre>', formatted)
     changes_display.short_description = 'Changes'
+
+
+@admin.register(NotificationPreference)
+class NotificationPreferenceAdmin(admin.ModelAdmin):
+    """Admin interface for NotificationPreference."""
+    
+    list_display = [
+        'user',
+        'email_enabled',
+        'delivery_method',
+        'quiet_hours_enabled',
+        'updated_at'
+    ]
+    
+    list_filter = [
+        'email_enabled',
+        'delivery_method',
+        'quiet_hours_enabled',
+    ]
+    
+    search_fields = ['user__username', 'user__email']
+    
+    readonly_fields = ['created_at', 'updated_at']
+    
+    fieldsets = (
+        ('User', {
+            'fields': ('user',)
+        }),
+        ('Email Settings', {
+            'fields': ('email_enabled', 'delivery_method')
+        }),
+        ('Notification Types', {
+            'fields': (
+                'notify_design_uploaded',
+                'notify_design_approved',
+                'notify_design_rejected',
+                'notify_review_started',
+                'notify_review_completed',
+                'notify_markup_added',
+                'notify_job_completed',
+                'notify_job_failed',
+                'notify_organization_invite',
+                'notify_role_changed',
+            )
+        }),
+        ('Quiet Hours', {
+            'fields': (
+                'quiet_hours_enabled',
+                'quiet_hours_start',
+                'quiet_hours_end',
+            )
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at')
+        }),
+    )
+
+
+@admin.register(EmailNotification)
+class EmailNotificationAdmin(admin.ModelAdmin):
+    """Admin interface for EmailNotification."""
+    
+    list_display = [
+        'id',
+        'recipient',
+        'notification_type',
+        'status_badge',
+        'priority',
+        'queued_at',
+        'sent_at',
+        'retry_count',
+    ]
+    
+    list_filter = [
+        'status',
+        'notification_type',
+        'priority',
+        'queued_at',
+    ]
+    
+    search_fields = [
+        'recipient__username',
+        'recipient__email',
+        'subject',
+    ]
+    
+    readonly_fields = [
+        'id',
+        'queued_at',
+        'sent_at',
+        'failed_at',
+        'retry_count',
+        'error_message',
+    ]
+    
+    fieldsets = (
+        ('Recipient', {
+            'fields': ('recipient',)
+        }),
+        ('Email Content', {
+            'fields': (
+                'notification_type',
+                'subject',
+                'message_plain',
+                'message_html',
+                'context_data',
+            )
+        }),
+        ('Delivery', {
+            'fields': (
+                'status',
+                'priority',
+                'queued_at',
+                'sent_at',
+                'failed_at',
+            )
+        }),
+        ('Retry Logic', {
+            'fields': (
+                'retry_count',
+                'max_retries',
+                'next_retry_at',
+                'error_message',
+            )
+        }),
+    )
+    
+    date_hierarchy = 'queued_at'
+    
+    actions = ['mark_as_sent', 'mark_as_cancelled', 'retry_failed']
+    
+    def status_badge(self, obj):
+        """Colored status badge."""
+        colors = {
+            'PENDING': '#FFC107',
+            'QUEUED': '#007BFF',
+            'SENDING': '#17A2B8',
+            'SENT': '#28A745',
+            'FAILED': '#DC3545',
+            'CANCELLED': '#6C757D',
+        }
+        color = colors.get(obj.status, '#6C757D')
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 10px; '
+            'border-radius: 3px; font-weight: bold;">{}</span>',
+            color, obj.status
+        )
+    status_badge.short_description = 'Status'
+    
+    def mark_as_sent(self, request, queryset):
+        """Mark selected notifications as sent."""
+        count = queryset.update(status='SENT')
+        self.message_user(request, f'{count} notifications marked as sent.')
+    mark_as_sent.short_description = 'Mark as sent'
+    
+    def mark_as_cancelled(self, request, queryset):
+        """Mark selected notifications as cancelled."""
+        count = queryset.update(status='CANCELLED')
+        self.message_user(request, f'{count} notifications cancelled.')
+    mark_as_cancelled.short_description = 'Cancel notifications'
+    
+    def retry_failed(self, request, queryset):
+        """Reset failed notifications for retry."""
+        count = queryset.filter(status='FAILED').update(
+            status='PENDING',
+            next_retry_at=None
+        )
+        self.message_user(request, f'{count} notifications queued for retry.')
+    retry_failed.short_description = 'Retry failed notifications'

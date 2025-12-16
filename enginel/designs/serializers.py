@@ -8,7 +8,7 @@ from .models import (
     Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
-    APIKey, RefreshToken
+    APIKey, RefreshToken, NotificationPreference, EmailNotification
 )
 
 
@@ -613,4 +613,73 @@ class CreateAPIKeySerializer(serializers.Serializer):
         allow_blank=True,
         help_text="Comma-separated list of allowed scopes"
     )
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    """
+    Serializer for NotificationPreference model.
+    """
+    class Meta:
+        model = NotificationPreference
+        fields = [
+            'user',
+            'email_enabled',
+            'notify_design_uploaded',
+            'notify_design_approved',
+            'notify_design_rejected',
+            'notify_review_started',
+            'notify_review_completed',
+            'notify_markup_added',
+            'notify_job_completed',
+            'notify_job_failed',
+            'notify_organization_invite',
+            'notify_role_changed',
+            'delivery_method',
+            'quiet_hours_enabled',
+            'quiet_hours_start',
+            'quiet_hours_end',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['user', 'created_at', 'updated_at']
+
+
+class EmailNotificationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for EmailNotification model.
+    """
+    recipient_email = serializers.EmailField(source='recipient.email', read_only=True)
+    recipient_username = serializers.CharField(source='recipient.username', read_only=True)
+    
+    class Meta:
+        model = EmailNotification
+        fields = [
+            'id',
+            'recipient',
+            'recipient_email',
+            'recipient_username',
+            'notification_type',
+            'subject',
+            'message_plain',
+            'message_html',
+            'context_data',
+            'status',
+            'queued_at',
+            'sent_at',
+            'failed_at',
+            'retry_count',
+            'max_retries',
+            'next_retry_at',
+            'error_message',
+            'priority',
+        ]
+        read_only_fields = [
+            'id',
+            'recipient',
+            'queued_at',
+            'sent_at',
+            'failed_at',
+            'retry_count',
+            'error_message',
+        ]
 

@@ -1075,3 +1075,297 @@ class AuditLog(models.Model):
     
     def __str__(self):
         return f"{self.action} on {self.resource_type} by {self.actor_username}"
+
+
+class NotificationPreference(models.Model):
+    """
+    User preferences for email notifications.
+    
+    Controls which types of notifications a user wants to receive
+    and delivery preferences (immediate, digest, etc.)
+    """
+    user = models.OneToOneField(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='notification_preferences',
+        primary_key=True
+    )
+    
+    # Email preferences
+    email_enabled = models.BooleanField(
+        default=True,
+        help_text="Master switch for all email notifications"
+    )
+    
+    # Notification type preferences
+    notify_design_uploaded = models.BooleanField(
+        default=True,
+        help_text="Notify when a new design is uploaded to a series I follow"
+    )
+    
+    notify_design_approved = models.BooleanField(
+        default=True,
+        help_text="Notify when my design is approved"
+    )
+    
+    notify_design_rejected = models.BooleanField(
+        default=True,
+        help_text="Notify when my design is rejected"
+    )
+    
+    notify_review_started = models.BooleanField(
+        default=True,
+        help_text="Notify when a review session is started on my design"
+    )
+    
+    notify_review_completed = models.BooleanField(
+        default=True,
+        help_text="Notify when a review session is completed"
+    )
+    
+    notify_markup_added = models.BooleanField(
+        default=True,
+        help_text="Notify when someone adds a markup to my design"
+    )
+    
+    notify_job_completed = models.BooleanField(
+        default=True,
+        help_text="Notify when background processing job completes"
+    )
+    
+    notify_job_failed = models.BooleanField(
+        default=True,
+        help_text="Notify when background processing job fails"
+    )
+    
+    notify_organization_invite = models.BooleanField(
+        default=True,
+        help_text="Notify when invited to join an organization"
+    )
+    
+    notify_role_changed = models.BooleanField(
+        default=True,
+        help_text="Notify when my role in an organization changes"
+    )
+    
+    # Delivery preferences
+    DELIVERY_CHOICES = [
+        ('IMMEDIATE', 'Immediate - Send emails immediately'),
+        ('HOURLY', 'Hourly Digest - Bundle notifications hourly'),
+        ('DAILY', 'Daily Digest - Send one email per day'),
+        ('WEEKLY', 'Weekly Digest - Send one email per week'),
+    ]
+    
+    delivery_method = models.CharField(
+        max_length=20,
+        choices=DELIVERY_CHOICES,
+        default='IMMEDIATE',
+        help_text="How to deliver email notifications"
+    )
+    
+    # Quiet hours
+    quiet_hours_enabled = models.BooleanField(
+        default=False,
+        help_text="Enable quiet hours (no notifications during specified times)"
+    )
+    
+    quiet_hours_start = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="Start of quiet hours (e.g., 22:00)"
+    )
+    
+    quiet_hours_end = models.TimeField(
+        null=True,
+        blank=True,
+        help_text="End of quiet hours (e.g., 08:00)"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'notification_preferences'
+        verbose_name = 'Notification Preference'
+        verbose_name_plural = 'Notification Preferences'
+    
+    def __str__(self):
+        return f"Notification preferences for {self.user.username}"
+    
+    def is_in_quiet_hours(self):
+        """Check if current time is within user's quiet hours."""
+        if not self.quiet_hours_enabled or not self.quiet_hours_start or not self.quiet_hours_end:
+            return False
+        
+        from django.utils import timezone
+        current_time = timezone.now().time()
+        
+        # Handle overnight quiet hours (e.g., 22:00 to 08:00)
+        if self.quiet_hours_start > self.quiet_hours_end:
+            return current_time >= self.quiet_hours_start or current_time <= self.quiet_hours_end
+        else:
+            return self.quiet_hours_start <= current_time <= self.quiet_hours_end
+
+
+class EmailNotification(models.Model):
+    """
+    Email notification queue and delivery tracking.
+    
+    Stores all email notifications with delivery status, retry logic,
+    and rate limiting support.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Recipient
+    recipient = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='email_notifications'
+    )
+    
+    # Email content
+    NOTIFICATION_TYPES = [
+        ('DESIGN_UPLOADED', 'Design Uploaded'),
+        ('DESIGN_APPROVED', 'Design Approved'),
+        ('DESIGN_REJECTED', 'Design Rejected'),
+        ('REVIEW_STARTED', 'Review Started'),
+        ('REVIEW_COMPLETED', 'Review Completed'),
+        ('MARKUP_ADDED', 'Markup Added'),
+        ('JOB_COMPLETED', 'Job Completed'),
+        ('JOB_FAILED', 'Job Failed'),
+        ('ORGANIZATION_INVITE', 'Organization Invite'),
+        ('ROLE_CHANGED', 'Role Changed'),
+        ('PASSWORD_RESET', 'Password Reset'),
+        ('ACCOUNT_ACTIVATED', 'Account Activated'),
+        ('SECURITY_ALERT', 'Security Alert'),
+    ]
+    
+    notification_type = models.CharField(
+        max_length=50,
+        choices=NOTIFICATION_TYPES,
+        db_index=True,
+        help_text="Type of notification"
+    )
+    
+    subject = models.CharField(
+        max_length=255,
+        help_text="Email subject line"
+    )
+    
+    message_plain = models.TextField(
+        help_text="Plain text email body"
+    )
+    
+    message_html = models.TextField(
+        blank=True,
+        help_text="HTML email body (optional)"
+    )
+    
+    # Context data for template rendering
+    context_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional context for email template"
+    )
+    
+    # Delivery status
+    STATUS_CHOICES = [
+        ('PENDING', 'Pending - Waiting to send'),
+        ('QUEUED', 'Queued - In delivery queue'),
+        ('SENDING', 'Sending - Currently being sent'),
+        ('SENT', 'Sent - Successfully delivered'),
+        ('FAILED', 'Failed - Delivery failed'),
+        ('CANCELLED', 'Cancelled - User or system cancelled'),
+    ]
+    
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='PENDING',
+        db_index=True
+    )
+    
+    # Delivery tracking
+    queued_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    failed_at = models.DateTimeField(null=True, blank=True)
+    
+    retry_count = models.PositiveIntegerField(default=0)
+    max_retries = models.PositiveIntegerField(default=3)
+    next_retry_at = models.DateTimeField(null=True, blank=True)
+    
+    error_message = models.TextField(blank=True)
+    
+    # Priority
+    PRIORITY_CHOICES = [
+        ('LOW', 'Low'),
+        ('NORMAL', 'Normal'),
+        ('HIGH', 'High'),
+        ('URGENT', 'Urgent'),
+    ]
+    
+    priority = models.CharField(
+        max_length=10,
+        choices=PRIORITY_CHOICES,
+        default='NORMAL',
+        db_index=True
+    )
+    
+    # Rate limiting
+    rate_limit_key = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        help_text="Key for rate limiting (e.g., 'user:<id>:hour')"
+    )
+    
+    class Meta:
+        db_table = 'email_notifications'
+        verbose_name = 'Email Notification'
+        verbose_name_plural = 'Email Notifications'
+        ordering = ['-queued_at']
+        indexes = [
+            models.Index(fields=['recipient', 'status']),
+            models.Index(fields=['status', 'priority', 'queued_at']),
+            models.Index(fields=['notification_type', 'queued_at']),
+            models.Index(fields=['next_retry_at']),
+        ]
+    
+    def __str__(self):
+        return f"{self.notification_type} to {self.recipient.email} ({self.status})"
+    
+    def mark_sent(self):
+        """Mark notification as successfully sent."""
+        self.status = 'SENT'
+        self.sent_at = timezone.now()
+        self.save(update_fields=['status', 'sent_at'])
+    
+    def mark_failed(self, error_message):
+        """Mark notification as failed with error message."""
+        self.status = 'FAILED'
+        self.failed_at = timezone.now()
+        self.error_message = error_message
+        self.retry_count += 1
+        
+        # Schedule retry if under max retries
+        if self.retry_count < self.max_retries:
+            from django.conf import settings
+            retry_delay = settings.NOTIFICATION_RETRY_DELAY
+            self.next_retry_at = timezone.now() + timezone.timedelta(seconds=retry_delay)
+            self.status = 'PENDING'
+        
+        self.save(update_fields=['status', 'failed_at', 'error_message', 'retry_count', 'next_retry_at'])
+    
+    def can_send_now(self):
+        """Check if notification can be sent now (rate limiting, retry timing)."""
+        if self.status not in ['PENDING', 'FAILED']:
+            return False
+        
+        if self.retry_count >= self.max_retries:
+            return False
+        
+        if self.next_retry_at and timezone.now() < self.next_retry_at:
+            return False
+        
+        return True

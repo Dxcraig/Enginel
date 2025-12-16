@@ -34,6 +34,10 @@ from designs.views import (
     monitoring_dashboard,
     error_logs,
     performance_stats,
+    notification_preferences,
+    notification_history,
+    notification_stats,
+    test_notification,
 )
 from designs.auth_views import (
     login_view,
@@ -85,6 +89,12 @@ urlpatterns = [
     path('api/monitoring/dashboard/', monitoring_dashboard, name='monitoring-dashboard'),
     path('api/monitoring/errors/', error_logs, name='error-logs'),
     path('api/monitoring/performance/', performance_stats, name='performance-stats'),
+    
+    # Notification endpoints
+    path('api/notifications/preferences/', notification_preferences, name='notification-preferences'),
+    path('api/notifications/history/', notification_history, name='notification-history'),
+    path('api/notifications/stats/', notification_stats, name='notification-stats'),
+    path('api/notifications/test/', test_notification, name='test-notification'),
 ]
 
 # Serve media files in development
