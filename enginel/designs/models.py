@@ -310,6 +310,123 @@ class CustomUser(AbstractUser):
         return user_level >= required_level
 
 
+class APIKey(models.Model):
+    """
+    API Key for service-to-service authentication.
+    
+    Long-lived tokens for programmatic access with:
+    - Configurable expiration
+    - Manual revocation
+    - Usage tracking
+    - Scope restrictions
+    """
+    key = models.CharField(max_length=64, unique=True, db_index=True)
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='api_keys'
+    )
+    name = models.CharField(
+        max_length=255,
+        help_text="Descriptive name for this API key (e.g., 'Jenkins CI', 'Mobile App')"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Optional expiration date. Null means no expiration."
+    )
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    
+    # Optional scope restrictions
+    allowed_ips = models.TextField(
+        blank=True,
+        help_text="Comma-separated list of allowed IP addresses"
+    )
+    scopes = models.TextField(
+        blank=True,
+        help_text="Comma-separated list of allowed scopes (e.g., 'read,write')"
+    )
+    
+    class Meta:
+        db_table = 'api_keys'
+        verbose_name = 'API Key'
+        verbose_name_plural = 'API Keys'
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        status = "active" if self.is_active else "revoked"
+        return f"{self.name} ({self.user.username}) - {status}"
+    
+    def save(self, *args, **kwargs):
+        if not self.key:
+            import secrets
+            self.key = secrets.token_urlsafe(48)  # 64-char URL-safe key
+        super().save(*args, **kwargs)
+
+
+class RefreshToken(models.Model):
+    """
+    Refresh token for obtaining new access tokens.
+    
+    Allows clients to get new access tokens without re-authentication.
+    More secure than long-lived access tokens.
+    """
+    token = models.CharField(max_length=255, unique=True, db_index=True)
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='refresh_tokens'
+    )
+    access_token_key = models.CharField(
+        max_length=64,
+        help_text="The access token this refresh token is paired with"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_revoked = models.BooleanField(default=False)
+    
+    # Track device/client information
+    device_name = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+    
+    class Meta:
+        db_table = 'refresh_tokens'
+        verbose_name = 'Refresh Token'
+        verbose_name_plural = 'Refresh Tokens'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['token', 'is_revoked']),
+            models.Index(fields=['access_token_key']),
+        ]
+    
+    def __str__(self):
+        status = "revoked" if self.is_revoked else "active"
+        return f"RefreshToken for {self.user.username} - {status}"
+    
+    def is_valid(self):
+        """Check if refresh token is still valid."""
+        from django.utils import timezone
+        return (
+            not self.is_revoked and
+            timezone.now() < self.expires_at
+        )
+    
+    def save(self, *args, **kwargs):
+        if not self.token:
+            import secrets
+            self.token = secrets.token_urlsafe(64)
+        if not self.expires_at:
+            from django.utils import timezone
+            from datetime import timedelta
+            from django.conf import settings
+            days = getattr(settings, 'REFRESH_TOKEN_EXPIRATION_DAYS', 30)
+            self.expires_at = timezone.now() + timedelta(days=days)
+        super().save(*args, **kwargs)
+
+
 class DesignSeries(models.Model):
     """
     Represents an abstract product/part (e.g., "Turbine Blade").

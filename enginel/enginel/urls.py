@@ -35,6 +35,17 @@ from designs.views import (
     error_logs,
     performance_stats,
 )
+from designs.auth_views import (
+    login_view,
+    logout_view,
+    refresh_token_view,
+    revoke_token_view,
+    verify_token_view,
+    list_sessions_view,
+    revoke_api_key_view,
+    APIKeyListCreateView,
+    APIKeyDetailView,
+)
 
 # Create API router
 router = DefaultRouter()
@@ -52,6 +63,19 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
+    
+    # Authentication endpoints
+    path('api/auth/login/', login_view, name='auth-login'),
+    path('api/auth/logout/', logout_view, name='auth-logout'),
+    path('api/auth/refresh/', refresh_token_view, name='auth-refresh'),
+    path('api/auth/revoke/', revoke_token_view, name='auth-revoke'),
+    path('api/auth/verify/', verify_token_view, name='auth-verify'),
+    path('api/auth/sessions/', list_sessions_view, name='auth-sessions'),
+    
+    # API Key management
+    path('api/auth/api-keys/', APIKeyListCreateView.as_view(), name='apikey-list-create'),
+    path('api/auth/api-keys/<int:pk>/', APIKeyDetailView.as_view(), name='apikey-detail'),
+    path('api/auth/api-keys/<int:pk>/revoke/', revoke_api_key_view, name='apikey-revoke'),
     
     # Health check endpoints
     path('api/health/', health_check, name='health-check'),

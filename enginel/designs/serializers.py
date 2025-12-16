@@ -7,7 +7,8 @@ from rest_framework import serializers
 from .models import (
     Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
-    AnalysisJob, ReviewSession, Markup, AuditLog
+    AnalysisJob, ReviewSession, Markup, AuditLog,
+    APIKey, RefreshToken
 )
 
 
@@ -524,4 +525,92 @@ class AuditLogSerializer(serializers.ModelSerializer):
             'timestamp',
         ]
         read_only_fields = '__all__'  # Audit logs are immutable
+
+
+# Authentication Serializers
+
+class LoginSerializer(serializers.Serializer):
+    """Serializer for login credentials."""
+    username = serializers.CharField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+    device_name = serializers.CharField(required=False, allow_blank=True)
+
+
+class TokenSerializer(serializers.Serializer):
+    """Serializer for token response."""
+    access_token = serializers.CharField()
+    refresh_token = serializers.CharField()
+    expires_in = serializers.IntegerField()
+    token_type = serializers.CharField(default='Bearer')
+
+
+class RefreshTokenSerializer(serializers.Serializer):
+    """Serializer for refresh token request."""
+    refresh_token = serializers.CharField(required=True)
+
+
+class APIKeySerializer(serializers.ModelSerializer):
+    """
+    Serializer for API Key.
+    
+    Note: Full key is only returned on creation.
+    For existing keys, only first/last 4 chars shown.
+    """
+    key_masked = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = APIKey
+        fields = [
+            'id',
+            'name',
+            'key',
+            'key_masked',
+            'is_active',
+            'created_at',
+            'expires_at',
+            'last_used_at',
+            'allowed_ips',
+            'scopes',
+        ]
+        read_only_fields = ['id', 'key', 'created_at', 'last_used_at']
+    
+    def get_key_masked(self, obj):
+        """Return masked key showing only first and last 4 characters."""
+        if len(obj.key) > 8:
+            return f"{obj.key[:4]}...{obj.key[-4:]}"
+        return "****"
+    
+    def to_representation(self, instance):
+        """Override to show full key only on creation."""
+        data = super().to_representation(instance)
+        
+        # If this is a new object (being created), include full key
+        if instance._state.adding or hasattr(instance, '_show_full_key'):
+            data['key'] = instance.key
+        else:
+            # For existing objects, remove key and show only masked version
+            data.pop('key', None)
+        
+        return data
+
+
+class CreateAPIKeySerializer(serializers.Serializer):
+    """Serializer for creating a new API key."""
+    name = serializers.CharField(required=True, max_length=255)
+    expires_in_days = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=3650,
+        help_text="Number of days until expiration (max 10 years)"
+    )
+    allowed_ips = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Comma-separated list of allowed IP addresses"
+    )
+    scopes = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Comma-separated list of allowed scopes"
+    )
 

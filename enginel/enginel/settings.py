@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'django_filters',
     'designs',
     'treebeard',
@@ -200,6 +201,8 @@ AUTH_USER_MODEL = 'designs.CustomUser'
 # Django REST Framework
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'designs.authentication.ExpiringTokenAuthentication',
+        'designs.authentication.APIKeyAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
@@ -233,4 +236,9 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 # Django Auditlog Configuration
 AUDITLOG_INCLUDE_ALL_MODELS = False  # We're using custom AuditLog model
+
+# Token Authentication Configuration
+TOKEN_EXPIRATION_HOURS = int(os.getenv('TOKEN_EXPIRATION_HOURS', '24'))  # 24 hours default
+API_KEY_EXPIRATION_DAYS = int(os.getenv('API_KEY_EXPIRATION_DAYS', '365'))  # 1 year default
+REFRESH_TOKEN_EXPIRATION_DAYS = int(os.getenv('REFRESH_TOKEN_EXPIRATION_DAYS', '30'))  # 30 days default
 
