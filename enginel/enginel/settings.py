@@ -13,6 +13,11 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 from pathlib import Path
 import os
 
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -26,7 +31,22 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-bv3rh7jou6ab=$)q4c%fy7!%1(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
+# Railway automatically provides RAILWAY_STATIC_URL and custom domain
+RAILWAY_ENVIRONMENT = os.getenv('RAILWAY_ENVIRONMENT')
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+if RAILWAY_ENVIRONMENT:
+    # Add Railway domains
+    ALLOWED_HOSTS.extend([
+        '.railway.app',
+        '.up.railway.app',
+    ])
+    # Add custom domain if provided
+    if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+        ALLOWED_HOSTS.append(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
+    # Parse comma-separated ALLOWED_HOSTS_EXTRA for additional domains
+    extra_hosts = os.getenv('ALLOWED_HOSTS_EXTRA', '')
+    if extra_hosts:
+        ALLOWED_HOSTS.extend([h.strip() for h in extra_hosts.split(',') if h.strip()])
 
 
 # Application definition
@@ -47,6 +67,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # Add WhiteNoise for static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -91,16 +112,29 @@ WSGI_APPLICATION = 'enginel.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB'),
-        'USER': os.getenv('POSTGRES_USER'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
-        'HOST': os.getenv('DB_HOST'),
-        'PORT': os.getenv('DB_PORT'),
+# Railway provides DATABASE_URL, parse it if available
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL and dj_database_url:
+    # Parse Railway's DATABASE_URL (format: postgresql://user:password@host:port/database)
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            conn_health_checks=True,
+        )
     }
-}
+else:
+    # Fallback to individual environment variables (for local development)
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB'),
+            'USER': os.getenv('POSTGRES_USER'),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD'),
+            'HOST': os.getenv('DB_HOST'),
+            'PORT': os.getenv('DB_PORT'),
+        }
+    }
 
 # Cache Configuration
 # https://docs.djangoproject.com/en/5.2/topics/cache/
@@ -184,8 +218,12 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# WhiteNoise for serving static files in production
+if not DEBUG:
+    STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files (User uploads)
 # https://docs.djangoproject.com/en/5.2/topics/files/
@@ -292,8 +330,29 @@ EMAIL_RATE_LIMIT_WINDOW = int(os.getenv('EMAIL_RATE_LIMIT_WINDOW', '3600'))  # 1
 # https://docs.djangoproject.com/en/5.2/topics/security/
 
 # HTTPS/SSL Settings (enable in production)
+# Railway automatically handles SSL/TLS
 SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False') == 'True'
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if not DEBUG else None
+if RAILWAY_ENVIRONMENT and not DEBUG:
+    SECURE_SSL_REDIRECT = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# CSRF trusted origins for cross-origin requests
+CSRF_TRUSTED_ORIGINS = []
+if RAILWAY_ENVIRONMENT:
+    # Automatically trust Railway domains
+    CSRF_TRUSTED_ORIGINS.extend([
+        'https://*.railway.app',
+        'https://*.up.railway.app',
+    ])
+    # Add custom domain if provided
+    if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
+        CSRF_TRUSTED_ORIGINS.append(f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN')}")
+# Add additional origins from environment variable
+if os.getenv('CSRF_TRUSTED_ORIGINS'):
+    CSRF_TRUSTED_ORIGINS.extend(os.getenv('CSRF_TRUSTED_ORIGINS').split(','))
+# Fallback for local development
+if not CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS = ['http://localhost:8000']
 
 # Cookie Security
 SESSION_COOKIE_SECURE = not DEBUG  # Only send session cookie over HTTPS

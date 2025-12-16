@@ -25,3 +25,7 @@ jsonschema
 # Email
 django-anymail
 
+# Production Server & Deployment
+gunicorn
+whitenoise
+dj-database-url
