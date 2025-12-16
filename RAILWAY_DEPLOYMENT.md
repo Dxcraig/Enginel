@@ -57,8 +57,11 @@ The Enginel application consists of **4 services**:
 ### Step 3: Configure the App Service
 
 1. Click on your app service
-2. Go to the **Variables** tab
-3. Add the following environment variables:
+2. Go to the **Settings** tab:
+   - **Root Directory**: Leave as `/`
+   - **Dockerfile Path**: `Dockerfile`
+   - **Start Command**: Leave empty (uses Dockerfile CMD)
+3. Go to the **Variables** tab and add the following environment variables:
 
 #### Required Variables
 
@@ -128,9 +131,10 @@ DEFAULT_FROM_EMAIL=noreply@enginel.com
 3. Name it "Worker Service"
 4. Go to **Settings**:
    - Connect to the same GitHub repo
-   - Set **Start Command**: `cd enginel && celery -A enginel worker -l info --concurrency=4`
+   - Set **Dockerfile Path**: `Dockerfile`
+   - Set **Start Command**: `celery -A enginel worker -l info --concurrency=4`
 5. Go to **Variables**:
-   - Copy all variables from the App Service (or use reference variables)
+   - Copy all variables from the App Service (or use reference variables like `${{App.SECRET_KEY}}`)
    - Add the same database and Redis connection variables
 
 ### Step 5: Create Cron Service (Celery Beat)
@@ -140,35 +144,26 @@ DEFAULT_FROM_EMAIL=noreply@enginel.com
 3. Name it "Cron Service"
 4. Go to **Settings**:
    - Connect to the same GitHub repo
-   - Set **Start Command**: `cd enginel && celery -A enginel beat -l info`
+   - Set **Dockerfile Path**: `Dockerfile`
+   - Set **Start Command**: `celery -A enginel beat -l info`
 5. Go to **Variables**:
    - Copy all variables from the App Service
    - Add the same database and Redis connection variables
 
 ### Step 6: Run Migrations
 
-After the App Service is deployed:
+Migrations will run automatically when the App Service starts (via entrypoint.sh).
 
-1. Click on the App Service
-2. Go to the **Deployments** tab
-3. Click on the latest deployment
-4. Open the **Shell** (or use Railway CLI)
-5. Run migrations:
+To create a superuser, use Railway CLI or the web shell:
 
 ```bash
-cd enginel
-python manage.py migrate
-python manage.py collectstatic --noinput
-python manage.py createsuperuser
-```
-
-Or use Railway CLI locally:
-
-```bash
+# Via Railway CLI
 railway link
-railway run python enginel/manage.py migrate
-railway run python enginel/manage.py collectstatic --noinput
-railway run python enginel/manage.py createsuperuser
+railway run python manage.py createsuperuser
+
+# Or via web shell in Railway dashboard
+# 1. Click App Service → Deployments → Latest → Shell
+# 2. Run: python manage.py createsuperuser
 ```
 
 ### Step 7: Generate Public Domain
