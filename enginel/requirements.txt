@@ -9,6 +9,10 @@ redis
 django-redis
 hiredis
 
+# Production server
+gunicorn
+whitenoise
+
 # Geometry Processing
 cadquery
 numpy
@@ -24,4 +28,3 @@ jsonschema
 
 # Email
 django-anymail
-
