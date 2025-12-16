@@ -6,6 +6,7 @@ Handles asynchronous processing of design assets:
 - Geometry extraction (STEP/IGES parsing)
 - Design rule checks (DRC)
 - BOM extraction
+- Unit normalization
 """
 import hashlib
 import logging
@@ -14,6 +15,10 @@ from django.core.files.storage import default_storage
 from django.utils import timezone
 from .models import DesignAsset, AnalysisJob, AssemblyNode
 from .geometry_processor import GeometryProcessor, GEOMETRY_AVAILABLE
+from .unit_converter import (
+    convert_length, convert_area, convert_volume,
+    detect_unit_from_filename, get_scale_factor, BASE_UNIT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +105,13 @@ def process_design_asset(self, design_asset_id):
             logger.info(f"BOM extraction result: {bom_result.get('bom_nodes_created', 0)} nodes created")
         except Exception as bom_error:
             logger.warning(f"BOM extraction failed (non-critical): {bom_error}")
+        
+        # Step 5: Normalize units
+        try:
+            unit_result = normalize_units.delay(design_asset_id).get(timeout=30)
+            logger.info(f"Unit normalization: {unit_result.get('original_unit', 'N/A')} → {unit_result.get('target_unit', 'N/A')}")
+        except Exception as unit_error:
+            logger.warning(f"Unit normalization failed (non-critical): {unit_error}")
         
         # Mark as completed
         design_asset.status = 'COMPLETED'
@@ -475,7 +487,7 @@ def extract_bom_from_assembly(design_asset_id):
 
 
 @shared_task
-def normalize_units(design_asset_id):
+def normalize_units(design_asset_id, unit_override=None):
     """
     Normalize physical units to standard (millimeters).
     
@@ -484,6 +496,7 @@ def normalize_units(design_asset_id):
     
     Args:
         design_asset_id: UUID of the DesignAsset
+        unit_override: Optional unit to use instead of auto-detection
     
     Returns:
         dict: Unit conversion results
@@ -492,12 +505,89 @@ def normalize_units(design_asset_id):
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Normalizing units for: {design_asset.filename}")
         
-        # TODO: Implement unit detection and conversion
+        # Determine original unit (priority: override > stored > auto-detect)
+        original_unit = unit_override or design_asset.units
+        if not original_unit or original_unit == 'unknown':
+            original_unit = detect_unit_from_filename(design_asset.filename)
+            logger.info(f"Auto-detected unit: {original_unit}")
+        
+        # If already in base unit, no conversion needed
+        if original_unit == BASE_UNIT:
+            logger.info(f"Already in base unit ({BASE_UNIT}), no conversion needed")
+            return {
+                'original_unit': original_unit,
+                'target_unit': BASE_UNIT,
+                'conversion_factor': 1.0,
+                'converted': False
+            }
+        
+        # Get metadata to convert
+        metadata = design_asset.metadata or {}
+        
+        # Convert geometric measurements
+        conversions = {}
+        
+        if 'volume' in metadata:
+            original_volume = metadata['volume']
+            converted_volume = convert_volume(original_volume, original_unit, BASE_UNIT)
+            conversions['volume'] = {
+                'original': original_volume,
+                'converted': converted_volume,
+                'unit': f'{BASE_UNIT}³'
+            }
+            metadata['volume_mm3'] = converted_volume
+        
+        if 'surface_area' in metadata:
+            original_area = metadata['surface_area']
+            converted_area = convert_area(original_area, original_unit, BASE_UNIT)
+            conversions['surface_area'] = {
+                'original': original_area,
+                'converted': converted_area,
+                'unit': f'{BASE_UNIT}²'
+            }
+            metadata['surface_area_mm2'] = converted_area
+        
+        # Convert bounding box
+        if 'bounding_box' in metadata:
+            bbox = metadata['bounding_box']
+            for key in ['xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax']:
+                if key in bbox:
+                    bbox[key] = convert_length(bbox[key], original_unit, BASE_UNIT)
+            
+            if 'dimensions' in bbox:
+                dims = bbox['dimensions']
+                for key in ['length', 'width', 'height']:
+                    if key in dims:
+                        dims[key] = convert_length(dims[key], original_unit, BASE_UNIT)
+        
+        # Convert center of mass
+        if 'center_of_mass' in metadata:
+            com = metadata['center_of_mass']
+            for key in ['x', 'y', 'z']:
+                if key in com:
+                    com[key] = convert_length(com[key], original_unit, BASE_UNIT)
+        
+        # Add conversion metadata
+        metadata['unit_conversion'] = {
+            'original_unit': original_unit,
+            'target_unit': BASE_UNIT,
+            'conversions': conversions,
+            'timestamp': timezone.now().isoformat()
+        }
+        
+        # Update design asset
+        design_asset.metadata = metadata
+        design_asset.units = BASE_UNIT
+        design_asset.save()
+        
+        logger.info(f"Unit conversion complete: {original_unit} → {BASE_UNIT}")
         
         result = {
-            'original_unit': design_asset.units or 'unknown',
-            'converted_to': 'millimeters',
-            'conversion_factor': 1.0
+            'original_unit': original_unit,
+            'target_unit': BASE_UNIT,
+            'conversion_factor': convert_length(1.0, original_unit, BASE_UNIT),
+            'converted': True,
+            'conversions': conversions
         }
         
         return result

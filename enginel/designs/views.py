@@ -298,6 +298,97 @@ class DesignAssetViewSet(AuditLogMixin, viewsets.ModelViewSet):
         """
         design_asset = self.get_object()
         
+        if design_asset.status != 'COMPLETED':
+            return Response(
+                {'error': 'Design asset must be in COMPLETED state for BOM extraction'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Queue BOM extraction task
+        from .tasks import extract_bom_from_assembly
+        task = extract_bom_from_assembly.delay(str(design_asset.id))
+        
+        return Response({
+            'message': f'BOM extraction queued for {design_asset.filename}',
+            'design_asset_id': str(design_asset.id),
+            'task_id': task.id,
+        }, status=status.HTTP_202_ACCEPTED)
+    
+    @action(detail=True, methods=['post'])
+    def normalize_units(self, request, pk=None):
+        """
+        Manually trigger unit normalization for a design asset.
+        
+        POST /api/designs/{id}/normalize_units/
+        Body: {unit: 'in'} (optional, otherwise auto-detected)
+        
+        Normalizes all measurements to millimeters (BASE_UNIT).
+        """
+        design_asset = self.get_object()
+        
+        if design_asset.status != 'COMPLETED':
+            return Response(
+                {'error': 'Design asset must be in COMPLETED state for unit normalization'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get optional unit override from request
+        unit_override = request.data.get('unit')
+        
+        # Queue unit normalization task
+        from .tasks import normalize_units
+        task = normalize_units.delay(str(design_asset.id), unit_override=unit_override)
+        
+        return Response({
+            'message': f'Unit normalization queued for {design_asset.filename}',
+            'design_asset_id': str(design_asset.id),
+            'task_id': task.id,
+            'unit_override': unit_override,
+        }, status=status.HTTP_202_ACCEPTED)
+    
+    @action(detail=False, methods=['get'], url_path='convert-units')
+    def convert_units(self, request):
+        """
+        Convert a value between different units.
+        
+        GET /api/designs/convert-units/?value=10&from=in&to=mm&type=length
+        
+        Returns converted value with metadata.
+        """
+        from .unit_converter import convert_length, convert_area, convert_volume, validate_unit
+        
+        try:
+            value = float(request.query_params.get('value', 0))
+            from_unit = request.query_params.get('from', 'mm')
+            to_unit = request.query_params.get('to', 'mm')
+            conversion_type = request.query_params.get('type', 'length')
+            
+            # Validate units
+            if not validate_unit(from_unit):
+                return Response({'error': f'Invalid unit: {from_unit}'}, status=status.HTTP_400_BAD_REQUEST)
+            if not validate_unit(to_unit):
+                return Response({'error': f'Invalid unit: {to_unit}'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Perform conversion
+            if conversion_type == 'length':
+                converted_value = convert_length(value, from_unit, to_unit)
+            elif conversion_type == 'area':
+                converted_value = convert_area(value, from_unit, to_unit)
+            elif conversion_type == 'volume':
+                converted_value = convert_volume(value, from_unit, to_unit)
+            else:
+                return Response({'error': f'Invalid type: {conversion_type}'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            return Response({
+                'original_value': value,
+                'original_unit': from_unit,
+                'converted_value': round(converted_value, 6),
+                'converted_unit': to_unit,
+                'conversion_type': conversion_type,
+            })
+        except ValueError as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        
         if not design_asset.file:
             return Response(
                 {'error': 'No file available for BOM extraction'},
