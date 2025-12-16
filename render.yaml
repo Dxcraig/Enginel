@@ -1,0 +1,160 @@
+# Render Blueprint for Enginel
+# This file defines all services needed for deployment
+
+databases:
+  - name: enginel-db
+    databaseName: enginel_db
+    user: enginel_user
+    plan: starter
+    region: oregon
+
+services:
+  # Redis Cache
+  - type: redis
+    name: enginel-redis
+    plan: starter
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: []
+
+  # Django Web Application
+  - type: web
+    name: enginel-web
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: './enginel/build.sh'
+    startCommand: 'cd enginel && gunicorn enginel.wsgi:application --bind 0.0.0.0:$PORT --workers 4 --threads 2'
+    healthCheckPath: /api/
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: enginel.settings
+      - key: DATABASE_URL
+        fromDatabase:
+          name: enginel-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: enginel-redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: false
+      - key: ALLOWED_HOSTS
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: us-west-2
+      - key: AWS_S3_CUSTOM_DOMAIN
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      - key: SECURITY_RATE_LIMIT_GLOBAL
+        value: 100/m
+      - key: SECURITY_RATE_LIMIT_AUTH
+        value: 1000/h
+      - key: SECURITY_RATE_LIMIT_ANON
+        value: 50/m
+      - key: SECURITY_IP_WHITELIST
+        value: ""
+      - key: SECURITY_IP_BLACKLIST
+        value: ""
+      - key: SECURITY_PASSWORD_MIN_LENGTH
+        value: 12
+      - key: SECURITY_SESSION_TIMEOUT
+        value: 3600
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: 587
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: true
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.13.1"
+
+databases:
+  - name: enginel-db
+    databaseName: enginel_db
+    user: enginel_user
+    plan: starter
+    region: oregon
+
+  # Celery Worker
+  - type: worker
+    name: enginel-celery-worker
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: 'cd enginel && pip install -r requirements.txt -r requirements-prod.txt'
+    startCommand: 'cd enginel && celery -A enginel worker --loglevel=info --concurrency=4'
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: enginel.settings
+      - key: DATABASE_URL
+        fromDatabase:
+          name: enginel-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: enginel-redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: AWS_STORAGE_BUCKET_NAME
+        sync: false
+      - key: AWS_S3_REGION_NAME
+        value: us-west-2
+
+  # Celery Beat Scheduler
+  - type: worker
+    name: enginel-celery-beat
+    runtime: python
+    region: oregon
+    plan: starter
+    buildCommand: 'cd enginel && pip install -r requirements.txt -r requirements-prod.txt'
+    startCommand: 'cd enginel && celery -A enginel beat --loglevel=info'
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: enginel.settings
+      - key: DATABASE_URL
+        fromDatabase:
+          name: enginel-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: enginel-redis
+          property: connectionString
+      - key: SECRET_KEY
+        sync: false
+      - key: DEBUG
+        value: false
+
+databases:
+  - name: enginel-db
+    databaseName: enginel_db
+    user: enginel_user
+    plan: starter
+    region: oregon
