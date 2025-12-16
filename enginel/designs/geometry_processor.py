@@ -236,51 +236,150 @@ class GeometryProcessor:
         """
         Extract assembly structure / Bill of Materials from STEP file.
         
+        For STEP files with assembly structure, this extracts component information.
+        Returns hierarchical BOM with part names, quantities, and properties.
+        
         Returns:
-            List of assembly components with their transformations
+            List of assembly components with their transformations and metadata
         """
         try:
-            # For assembly STEP files, we need to parse the assembly structure
-            # This is a simplified version - full implementation would need to parse
-            # the STEP file structure to get component names and hierarchies
-            
             solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
             
             from OCP.TopAbs import TopAbs_SOLID
             from OCP.TopExp import TopExp_Explorer
+            from OCP.Bnd import Bnd_Box
+            from OCP.BRepBndLib import BRepBndLib
             
             components = []
+            
+            # Try to parse STEP file metadata for assembly names
+            component_names = self._extract_step_component_names()
+            
+            # Explore all solids in the assembly
             explorer = TopExp_Explorer(solid, TopAbs_SOLID)
             index = 0
             
             while explorer.More():
                 component_solid = explorer.Current()
                 
-                # Calculate properties for this component
-                volume_props = GProp_GProps()
-                BRepGProp.VolumeProperties_s(component_solid, volume_props)
-                
-                com = volume_props.CentreOfMass()
-                
-                components.append({
-                    'index': index,
-                    'name': f"Component_{index}",
-                    'volume': volume_props.Mass(),
-                    'center_of_mass': {
-                        'x': com.X(),
-                        'y': com.Y(),
-                        'z': com.Z()
-                    }
-                })
+                try:
+                    # Calculate geometric properties
+                    volume_props = GProp_GProps()
+                    surface_props = GProp_GProps()
+                    BRepGProp.VolumeProperties_s(component_solid, volume_props)
+                    BRepGProp.SurfaceProperties_s(component_solid, surface_props)
+                    
+                    volume = volume_props.Mass()
+                    surface_area = surface_props.Mass()
+                    com = volume_props.CentreOfMass()
+                    
+                    # Get bounding box for component
+                    bbox = Bnd_Box()
+                    BRepBndLib.Add_s(component_solid, bbox)
+                    xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+                    
+                    # Determine component name
+                    component_name = component_names.get(index, f"Component_{index + 1}")
+                    
+                    components.append({
+                        'index': index,
+                        'name': component_name,
+                        'part_number': f"PN-{index + 1:04d}",
+                        'quantity': 1,
+                        'node_type': 'PART',
+                        'volume': volume,
+                        'surface_area': surface_area,
+                        'mass': volume * 0.0000027,  # Rough estimate assuming aluminum (2.7 g/cm³)
+                        'center_of_mass': {
+                            'x': com.X(),
+                            'y': com.Y(),
+                            'z': com.Z()
+                        },
+                        'bounding_box': {
+                            'xmin': xmin, 'xmax': xmax,
+                            'ymin': ymin, 'ymax': ymax,
+                            'zmin': zmin, 'zmax': zmax,
+                            'dimensions': {
+                                'length': xmax - xmin,
+                                'width': ymax - ymin,
+                                'height': zmax - zmin
+                            }
+                        },
+                        'topology': self._count_component_topology(component_solid)
+                    })
+                    
+                except Exception as comp_error:
+                    logger.warning(f"Failed to process component {index}: {comp_error}")
                 
                 index += 1
                 explorer.Next()
+            
+            if not components:
+                logger.info("No assembly structure found, treating as single part")
             
             return components
         
         except Exception as e:
             logger.error(f"Failed to extract BOM structure: {str(e)}")
             return []
+    
+    def _extract_step_component_names(self) -> Dict[int, str]:
+        """
+        Parse STEP file to extract component names from metadata.
+        
+        Returns:
+            Dictionary mapping component index to name
+        """
+        names = {}
+        try:
+            with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                
+                # Look for PRODUCT definitions in STEP file
+                import re
+                product_pattern = r"#\d+\s*=\s*PRODUCT\s*\('([^']+)'"
+                matches = re.findall(product_pattern, content)
+                
+                for idx, name in enumerate(matches):
+                    if name and name not in ['', 'UNNAMED', 'UNKNOWN']:
+                        names[idx] = name
+                
+                logger.info(f"Found {len(names)} named components in STEP file")
+        except Exception as e:
+            logger.debug(f"Could not extract STEP component names: {e}")
+        
+        return names
+    
+    def _count_component_topology(self, solid) -> Dict[str, int]:
+        """
+        Count topology elements for a specific component.
+        
+        Args:
+            solid: TopoDS_Solid to analyze
+        
+        Returns:
+            Dictionary with topology counts
+        """
+        try:
+            from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
+            from OCP.TopExp import TopExp_Explorer
+            
+            def count_shapes(shape, shape_type):
+                explorer = TopExp_Explorer(shape, shape_type)
+                count = 0
+                while explorer.More():
+                    count += 1
+                    explorer.Next()
+                return count
+            
+            return {
+                'faces': count_shapes(solid, TopAbs_FACE),
+                'edges': count_shapes(solid, TopAbs_EDGE),
+                'vertices': count_shapes(solid, TopAbs_VERTEX)
+            }
+        except Exception as e:
+            logger.debug(f"Failed to count topology: {e}")
+            return {'faces': 0, 'edges': 0, 'vertices': 0}
     
     def process_all(self) -> Dict[str, Any]:
         """

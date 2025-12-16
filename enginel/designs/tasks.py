@@ -94,8 +94,12 @@ def process_design_asset(self, design_asset_id):
         validation_job.completed_at = timezone.now()
         validation_job.save()
         
-        # Step 4: Extract BOM (if applicable)
-        # TODO: Implement BOM extraction
+        # Step 4: Extract BOM (if assembly file)
+        try:
+            bom_result = extract_bom_from_assembly.delay(design_asset_id).get(timeout=120)
+            logger.info(f"BOM extraction result: {bom_result.get('bom_nodes_created', 0)} nodes created")
+        except Exception as bom_error:
+            logger.warning(f"BOM extraction failed (non-critical): {bom_error}")
         
         # Mark as completed
         design_asset.status = 'COMPLETED'
@@ -356,53 +360,96 @@ def extract_bom_from_assembly(design_asset_id):
             bom_job.save()
             return {'components': []}
         
-        # Get file path
-        file_path = design_asset.file.path if hasattr(design_asset.file, 'path') else str(design_asset.file)
+        if not design_asset.file:
+            logger.warning(f"No file attached to {design_asset_id}")
+            bom_job.status = 'FAILED'
+            bom_job.result = {'error': 'No file available'}
+            bom_job.completed_at = timezone.now()
+            bom_job.save()
+            return {'error': 'No file available'}
+        
+        # Get file path (handle both local and S3 storage)
+        if hasattr(design_asset.file, 'path'):
+            file_path = design_asset.file.path
+        else:
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
+                with design_asset.file.open('rb') as f:
+                    tmp_file.write(f.read())
+                file_path = tmp_file.name
         
         # Extract BOM using GeometryProcessor
         processor = GeometryProcessor(file_path)
         components = processor.extract_bom_structure()
+        
+        # Clear existing BOM nodes for this design
+        AssemblyNode.objects.filter(design_asset=design_asset).delete()
         
         # Create AssemblyNode tree from extracted components
         if components:
             # Create root assembly node
             root = AssemblyNode.add_root(
                 design_asset=design_asset,
-                name=design_asset.filename,
+                name=design_asset.filename.rsplit('.', 1)[0],  # Remove extension
                 part_number=design_asset.series.part_number,
                 node_type='ASSEMBLY',
                 quantity=1,
+                mass=sum(comp.get('mass', 0) for comp in components),
+                volume=sum(comp.get('volume', 0) for comp in components),
                 component_metadata={
                     'is_root': True,
-                    'component_count': len(components)
+                    'component_count': len(components),
+                    'file_format': design_asset.filename.rsplit('.', 1)[-1].upper()
                 }
             )
             
             # Add component nodes as children
             for comp in components:
-                root.add_child(
+                child = root.add_child(
                     design_asset=design_asset,
                     name=comp['name'],
-                    part_number=f"{design_asset.series.part_number}_COMP{comp['index']}",
-                    node_type='PART',
-                    quantity=1,
+                    part_number=comp['part_number'],
+                    node_type=comp.get('node_type', 'PART'),
+                    quantity=comp.get('quantity', 1),
+                    mass=comp.get('mass'),
+                    volume=comp.get('volume'),
                     component_metadata={
-                        'volume': comp['volume'],
-                        'center_of_mass': comp['center_of_mass']
+                        'index': comp['index'],
+                        'surface_area': comp.get('surface_area', 0),
+                        'center_of_mass': comp.get('center_of_mass', {}),
+                        'bounding_box': comp.get('bounding_box', {}),
+                        'topology': comp.get('topology', {})
                     }
                 )
+                logger.debug(f"Created BOM node: {child.name} ({child.part_number})")
             
             result = {
                 'bom_nodes_created': len(components) + 1,  # +1 for root
                 'root_assemblies': 1,
                 'total_parts': len(components),
-                'components': components
+                'total_mass': root.mass,
+                'total_volume': root.volume,
+                'components': components[:10]  # Only include first 10 for result summary
             }
         else:
-            # Single part, no assembly
+            # Single part, no assembly - create single node
+            root = AssemblyNode.add_root(
+                design_asset=design_asset,
+                name=design_asset.filename.rsplit('.', 1)[0],
+                part_number=design_asset.series.part_number,
+                node_type='PART',
+                quantity=1,
+                mass=design_asset.metadata.get('mass_properties', {}).get('mass', 0) if design_asset.metadata else 0,
+                volume=design_asset.metadata.get('volume_mm3', 0) if design_asset.metadata else 0,
+                component_metadata={
+                    'is_root': True,
+                    'single_part': True
+                }
+            )
+            
             result = {
-                'bom_nodes_created': 0,
-                'root_assemblies': 0,
+                'bom_nodes_created': 1,
+                'root_assemblies': 1,
                 'total_parts': 1,
                 'note': 'Single part file, no assembly structure'
             }

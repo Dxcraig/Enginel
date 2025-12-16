@@ -282,12 +282,17 @@ class BOMTreeSerializer(serializers.Serializer):
     """
     Serializer for complete BOM tree export.
     
-    Returns the entire hierarchical structure.
+    Returns the entire hierarchical structure with statistics.
     """
     design_asset_id = serializers.UUIDField()
+    filename = serializers.CharField(required=False)
     root_nodes = AssemblyNodeSerializer(many=True)
+    total_nodes = serializers.IntegerField(required=False)
     total_parts = serializers.IntegerField()
+    total_assemblies = serializers.IntegerField(required=False)
     max_depth = serializers.IntegerField()
+    total_mass_kg = serializers.FloatField(required=False)
+    message = serializers.CharField(required=False)
 
 
 class UploadURLResponseSerializer(serializers.Serializer):

@@ -248,27 +248,71 @@ class DesignAssetViewSet(AuditLogMixin, viewsets.ModelViewSet):
         
         GET /api/designs/{id}/bom/
         
-        Returns complete BOM tree structure.
+        Returns complete BOM tree structure with nested components.
         """
         design_asset = self.get_object()
         
-        # Get root nodes (nodes without parents)
+        # Get root nodes (top-level assemblies)
         root_nodes = AssemblyNode.get_root_nodes().filter(design_asset=design_asset)
+        
+        if not root_nodes.exists():
+            return Response({
+                'design_asset_id': str(design_asset.id),
+                'message': 'No BOM data available. BOM extraction may still be processing.',
+                'root_nodes': [],
+                'total_parts': 0,
+                'max_depth': 0
+            })
         
         # Calculate tree statistics
         all_nodes = AssemblyNode.objects.filter(design_asset=design_asset)
-        total_parts = all_nodes.count()
+        total_parts = all_nodes.filter(node_type='PART').count()
+        total_assemblies = all_nodes.filter(node_type='ASSEMBLY').count()
         max_depth = max([node.get_depth() for node in all_nodes], default=0)
         
+        # Calculate total mass
+        total_mass = sum(node.get_total_mass() for node in root_nodes)
+        
         response_data = {
-            'design_asset_id': design_asset.id,
+            'design_asset_id': str(design_asset.id),
+            'filename': design_asset.filename,
             'root_nodes': root_nodes,
+            'total_nodes': all_nodes.count(),
             'total_parts': total_parts,
+            'total_assemblies': total_assemblies,
             'max_depth': max_depth,
+            'total_mass_kg': round(total_mass, 4),
         }
         
         serializer = BOMTreeSerializer(response_data)
         return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'])
+    def extract_bom(self, request, pk=None):
+        """
+        Manually trigger BOM extraction for a design asset.
+        
+        POST /api/designs/{id}/extract_bom/
+        
+        Useful for re-extracting BOM or if automatic extraction failed.
+        """
+        design_asset = self.get_object()
+        
+        if not design_asset.file:
+            return Response(
+                {'error': 'No file available for BOM extraction'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Queue BOM extraction task
+        from .tasks import extract_bom_from_assembly
+        task = extract_bom_from_assembly.delay(str(design_asset.id))
+        
+        return Response({
+            'message': 'BOM extraction started',
+            'task_id': task.id,
+            'design_asset_id': str(design_asset.id)
+        }, status=status.HTTP_202_ACCEPTED)
 
 
 class AssemblyNodeViewSet(viewsets.ModelViewSet):
