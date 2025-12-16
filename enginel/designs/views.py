@@ -29,6 +29,14 @@ from .serializers import (
     ReviewSessionDetailSerializer,
     MarkupSerializer,
 )
+from .permissions import (
+    DesignAssetPermission,
+    ReviewPermission,
+    IsOwnerOrReadOnly,
+    CanFinalizeUpload,
+    IsReviewerOrReadOnly,
+    IsUSPersonForITAR,
+)
 from .tasks import process_design_asset
 
 
@@ -91,7 +99,7 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
     Provides CRUD operations and custom actions for upload/download.
     """
     queryset = DesignAsset.objects.select_related('series', 'uploaded_by').all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, DesignAssetPermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['filename', 'series__part_number', 'series__name', 'revision']
     ordering_fields = ['created_at', 'version_number']
@@ -165,7 +173,7 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
         response_serializer = UploadURLResponseSerializer(response_data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
     
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, CanFinalizeUpload])
     def finalize(self, request, pk=None):
         """
         Finalize upload and trigger processing.
@@ -308,7 +316,7 @@ class ReviewSessionViewSet(viewsets.ModelViewSet):
     queryset = ReviewSession.objects.select_related('design_asset', 'created_by').prefetch_related('reviewers', 'markups').annotate(
         markup_count=Count('markups')
     ).all()
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, ReviewPermission]
     
     def get_serializer_class(self):
         """Return detailed serializer for retrieve action."""
@@ -378,7 +386,7 @@ class MarkupViewSet(viewsets.ModelViewSet):
     """
     queryset = Markup.objects.select_related('review_session', 'author').all()
     serializer_class = MarkupSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReviewerOrReadOnly]
     
     def get_queryset(self):
         """Filter markups based on review session access."""
