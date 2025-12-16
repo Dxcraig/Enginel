@@ -29,3 +29,4 @@ django-anymail
 gunicorn
 whitenoise
 dj-database-url
+dj-database-url
