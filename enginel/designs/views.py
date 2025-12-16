@@ -11,6 +11,8 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Count, Max, Q
 from django_filters.rest_framework import DjangoFilterBackend
 
+from .mixins import CachedViewSetMixin, LongtermCachedMixin, ShortCachedMixin
+
 from .models import (
     Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
@@ -68,11 +70,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 
 
-class OrganizationViewSet(viewsets.ModelViewSet):
+class OrganizationViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing organizations (multi-tenant containers).
     
     Only organization admins can modify settings.
+    Cached for 5 minutes (list/retrieve).
     
     Filtering:
     - ?name=acme - Filter by organization name (case-insensitive)
@@ -155,11 +158,12 @@ class OrganizationViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
+class CustomUserViewSet(CachedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """
     Read-only ViewSet for user information.
     
     Allows users to view their own details and other users in their org.
+    Cached for 5 minutes (list/retrieve).
     
     Filtering:
     - ?username=john - Filter by username (case-insensitive)
@@ -188,12 +192,13 @@ class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(serializer.data)
 
 
-class DesignSeriesViewSet(viewsets.ModelViewSet):
+class DesignSeriesViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing design series (part numbers).
     
     A design series is a container for multiple versions of the same part.
     Users can only view/modify series in their organization.
+    Cached for 5 minutes (list/retrieve).
     
     Filtering:
     - ?part_number=PN-001 - Filter by part number (case-insensitive)
@@ -262,12 +267,13 @@ class DesignSeriesViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class DesignAssetViewSet(AuditLogMixin, viewsets.ModelViewSet):
+class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing design assets (specific versions of CAD files).
     
     Provides CRUD operations and custom actions for upload/download.
     Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
+    Cached for 5 minutes (list/retrieve).
     
     Filtering:
     - ?filename=bracket.step - Filter by filename (case-insensitive)

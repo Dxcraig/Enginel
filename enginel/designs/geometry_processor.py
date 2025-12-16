@@ -6,12 +6,15 @@ This module provides functions to extract geometric metadata from CAD files:
 - Bounding Box dimensions
 - Topology counts (solids, faces, edges, vertices)
 - Design Rule Checks (manifold geometry, watertightness)
+
+Expensive operations are cached using longterm cache (1 hour).
 """
 
 import logging
 from typing import Dict, Any, List, Tuple
 from pathlib import Path
 import json
+from designs.cache import cache_result, CacheKey, longterm_cache_manager
 
 try:
     import cadquery as cq
@@ -417,6 +420,9 @@ def process_cad_file(file_path: str) -> Dict[str, Any]:
     """
     Convenience function to process a CAD file and return all metadata.
     
+    This function is NOT cached because it's called from Celery tasks
+    with different file paths. Caching happens at the ViewSet level.
+    
     Args:
         file_path: Path to STEP or IGES file
     
@@ -425,3 +431,58 @@ def process_cad_file(file_path: str) -> Dict[str, Any]:
     """
     processor = GeometryProcessor(file_path)
     return processor.process_all()
+
+
+@cache_result(timeout=3600, cache_alias='longterm', key_prefix='geometry_metadata')
+def get_cached_geometry_metadata(design_asset_id: str) -> Dict[str, Any]:
+    """
+    Get geometry metadata with longterm caching (1 hour).
+    
+    Use this function for API responses to avoid recomputing expensive
+    geometry calculations. Cache is automatically invalidated when
+    DesignAsset is updated via signals.
+    
+    Args:
+        design_asset_id: UUID of the DesignAsset
+    
+    Returns:
+        Dictionary with geometry metadata
+    """
+    from designs.models import DesignAsset
+    
+    try:
+        design = DesignAsset.objects.get(id=design_asset_id)
+        
+        if design.upload_status != 'COMPLETED':
+            return {
+                'status': 'not_ready',
+                'message': 'Design asset is not in COMPLETED state'
+            }
+        
+        # Return cached metadata from model if available
+        if design.metadata:
+            return design.metadata
+        
+        # Otherwise recompute (should rarely happen)
+        if design.file:
+            processor = GeometryProcessor(design.file.path)
+            metadata = processor.process_all()
+            
+            # Update the model
+            design.metadata = metadata
+            design.save(update_fields=['metadata'])
+            
+            return metadata
+        
+        return {
+            'status': 'no_file',
+            'message': 'No file available for processing'
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get geometry metadata for {design_asset_id}: {e}")
+        return {
+            'status': 'error',
+            'message': str(e)
+        }
+

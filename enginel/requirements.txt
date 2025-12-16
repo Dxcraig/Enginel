@@ -6,6 +6,8 @@ djangorestframework
 django-filter
 celery[redis]
 redis
+django-redis
+hiredis
 
 # Geometry Processing
 cadquery
