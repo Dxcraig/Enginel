@@ -3,6 +3,7 @@ psycopg[binary]
 django-auditlog
 django-treebeard
 djangorestframework
+django-filter
 celery[redis]
 redis
 

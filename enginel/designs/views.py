@@ -8,7 +8,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
-from django.db.models import Count, Max
+from django.db.models import Count, Max, Q
+from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import (
     Organization, OrganizationMembership,
@@ -44,6 +45,17 @@ from .permissions import (
     IsReviewerOrReadOnly,
     IsUSPersonForITAR,
 )
+from .filters import (
+    OrganizationFilter,
+    CustomUserFilter,
+    DesignSeriesFilter,
+    DesignAssetFilter,
+    AssemblyNodeFilter,
+    AnalysisJobFilter,
+    ReviewSessionFilter,
+    MarkupFilter,
+    AuditLogFilter,
+)
 from .tasks import process_design_asset
 from .audit import log_audit_event, audit_action, AuditLogMixin
 from .monitoring import HealthChecker, ErrorTracker, PerformanceMonitor, MetricsCollector
@@ -61,13 +73,31 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     ViewSet for managing organizations (multi-tenant containers).
     
     Only organization admins can modify settings.
+    
+    Filtering:
+    - ?name=acme - Filter by organization name (case-insensitive)
+    - ?subscription_tier=PROFESSIONAL - Filter by tier
+    - ?is_us_organization=true - ITAR compliance filter
+    - ?min_users=5 - Organizations with at least 5 users
+    - ?max_storage=100 - Organizations using <= 100GB
+    - ?created_after=2025-01-01 - Created after date
+    
+    Search: ?search=engineering (searches name, slug, description)
+    Ordering: ?ordering=-created_at (prefix with - for descending)
     """
     queryset = Organization.objects.filter(is_active=True)
     serializer_class = OrganizationSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
-    search_fields = ['name', 'slug', 'description']
-    ordering_fields = ['name', 'created_at']
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = OrganizationFilter
+    search_fields = ['name', 'slug', 'description', 'contact_email']
+    ordering_fields = ['name', 'created_at', 'subscription_tier']
+    ordering = ['name']
+    lookup_field = 'slug'
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = OrganizationFilter
+    search_fields = ['name', 'slug', 'description', 'contact_email']
+    ordering_fields = ['name', 'created_at', 'subscription_tier']
     ordering = ['name']
     lookup_field = 'slug'
     
@@ -127,13 +157,29 @@ class OrganizationViewSet(viewsets.ModelViewSet):
 
 class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    ViewSet for viewing users.
+    Read-only ViewSet for user information.
     
-    Provides read-only access to user information.
+    Allows users to view their own details and other users in their org.
+    
+    Filtering:
+    - ?username=john - Filter by username (case-insensitive)
+    - ?security_clearance_level=SECRET - Filter by clearance
+    - ?min_clearance=CONFIDENTIAL - Users with at least this clearance
+    - ?is_us_person=true - ITAR-compliant users only
+    - ?member_of_organization=<uuid> - Filter by organization
+    - ?is_active=true - Active users only
+    
+    Search: ?search=john (searches username, email, first_name, last_name)
+    Ordering: ?ordering=username
     """
     queryset = CustomUser.objects.all()
     serializer_class = CustomUserSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = CustomUserFilter
+    search_fields = ['username', 'email', 'first_name', 'last_name', 'organization']
+    ordering_fields = ['username', 'date_joined', 'last_login']
+    ordering = ['username']
     
     @action(detail=False, methods=['get'])
     def me(self, request):
@@ -144,10 +190,25 @@ class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
 
 class DesignSeriesViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing Design Series (Part Numbers).
+    ViewSet for managing design series (part numbers).
     
-    Each series contains multiple versions of a design.
-    Scoped to user's organizations for multi-tenant isolation.
+    A design series is a container for multiple versions of the same part.
+    Users can only view/modify series in their organization.
+    
+    Filtering:
+    - ?part_number=PN-001 - Filter by part number (case-insensitive)
+    - ?name=bracket - Filter by name
+    - ?status=RELEASED - Filter by status (DRAFT, IN_REVIEW, RELEASED, OBSOLETE)
+    - ?classification_level=SECRET - Filter by classification
+    - ?requires_itar_compliance=true - ITAR-controlled parts
+    - ?has_versions=true - Parts with uploaded versions
+    - ?min_versions=3 - Parts with at least 3 versions
+    - ?organization=<uuid> - Filter by organization
+    - ?created_by_username=john - Filter by creator
+    - ?created_after=2025-01-01 - Created after date
+    
+    Search: ?search=bracket (searches part_number, name, description)
+    Ordering: ?ordering=-created_at (prefix with - for descending)
     """
     queryset = DesignSeries.objects.annotate(
         version_count=Count('versions'),
@@ -155,9 +216,10 @@ class DesignSeriesViewSet(viewsets.ModelViewSet):
     ).select_related('created_by', 'organization').all()
     serializer_class = DesignSeriesSerializer
     permission_classes = [IsAuthenticated, IsOrganizationMember, CanCreateInOrganization]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = DesignSeriesFilter
     search_fields = ['part_number', 'name', 'description']
-    ordering_fields = ['part_number', 'created_at']
+    ordering_fields = ['part_number', 'created_at', 'updated_at', 'status']
     ordering = ['-created_at']
     
     def get_queryset(self):
@@ -206,12 +268,32 @@ class DesignAssetViewSet(AuditLogMixin, viewsets.ModelViewSet):
     
     Provides CRUD operations and custom actions for upload/download.
     Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
+    
+    Filtering:
+    - ?filename=bracket.step - Filter by filename (case-insensitive)
+    - ?file_format=step - Filter by format (step, iges, stl, obj)
+    - ?file_formats=step,iges - Multiple formats
+    - ?upload_status=COMPLETED - Filter by status
+    - ?min_file_size_mb=10 - Files >= 10MB
+    - ?max_file_size_mb=100 - Files <= 100MB
+    - ?has_geometry=true - Files with extracted geometry
+    - ?has_bom=true - Assemblies with BOM data
+    - ?is_assembly=true - Assembly files only
+    - ?min_volume=1000 - Minimum volume (mm³)
+    - ?min_mass=0.5 - Minimum mass (kg)
+    - ?part_number=PN-001 - Filter by parent part number
+    - ?uploaded_by_username=john - Filter by uploader
+    - ?uploaded_after=2025-01-01 - Uploaded after date
+    
+    Search: ?search=bracket (searches filename, part_number, series name, revision)
+    Ordering: ?ordering=-created_at,-file_size
     """
     queryset = DesignAsset.objects.select_related('series', 'uploaded_by').all()
     permission_classes = [IsAuthenticated, DesignAssetPermission]
-    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = DesignAssetFilter
     search_fields = ['filename', 'series__part_number', 'series__name', 'revision']
-    ordering_fields = ['created_at', 'version_number']
+    ordering_fields = ['created_at', 'version_number', 'file_size', 'volume_mm3', 'mass_kg']
     ordering = ['-created_at']
     audit_resource_type = 'DesignAsset'
     
@@ -514,13 +596,34 @@ class DesignAssetViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
 class AssemblyNodeViewSet(viewsets.ModelViewSet):
     """
-    ViewSet for managing BOM tree nodes.
+    ViewSet for managing Bill of Materials (BOM) tree nodes.
     
-    Provides CRUD for assembly hierarchy.
+    Each assembly can have a hierarchical BOM structure.
+    
+    Filtering:
+    - ?part_name=bracket - Filter by part name (case-insensitive)
+    - ?part_number=PN-001 - Filter by part number
+    - ?node_type=COMPONENT - Filter by type (COMPONENT, ASSEMBLY, REFERENCE, VIRTUAL)
+    - ?material=aluminum - Filter by material
+    - ?has_children=true - Nodes with child parts
+    - ?is_root=true - Root-level nodes only
+    - ?depth_level=2 - Specific depth in hierarchy
+    - ?min_depth=2 - Minimum depth level
+    - ?quantity=4 - Exact quantity
+    - ?min_quantity=10 - Minimum quantity
+    - ?design_asset=<uuid> - Filter by parent design
+    
+    Search: ?search=bracket (searches part_name, part_number, material, description)
+    Ordering: ?ordering=depth,part_number
     """
     queryset = AssemblyNode.objects.all()
     serializer_class = AssemblyNodeSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = AssemblyNodeFilter
+    search_fields = ['part_name', 'part_number', 'material', 'description']
+    ordering_fields = ['depth', 'part_number', 'quantity']
+    ordering = ['depth', 'part_number']
     
     def get_queryset(self):
         """Filter nodes based on user's design access."""
@@ -536,13 +639,31 @@ class AssemblyNodeViewSet(viewsets.ModelViewSet):
 
 class AnalysisJobViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    ViewSet for viewing analysis jobs.
+    ViewSet for monitoring Celery background tasks.
     
-    Read-only access to background task status.
+    Provides real-time status of geometry processing jobs.
+    
+    Filtering:
+    - ?task_name=process_design_asset - Filter by task type
+    - ?status=COMPLETED - Filter by status (PENDING, RUNNING, COMPLETED, FAILED)
+    - ?design_asset=<uuid> - Filter by design
+    - ?initiated_by=<user_id> - Filter by user
+    - ?started_after=2025-01-01 - Started after date
+    - ?completed_after=2025-01-01 - Completed after date
+    - ?min_duration=30 - Tasks taking >= 30 seconds
+    - ?max_duration=300 - Tasks taking <= 5 minutes
+    
+    Search: ?search=process (searches task_name, celery_task_id)
+    Ordering: ?ordering=-created_at
     """
     queryset = AnalysisJob.objects.select_related('design_asset').all()
     serializer_class = AnalysisJobSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = AnalysisJobFilter
+    search_fields = ['task_name', 'celery_task_id']
+    ordering_fields = ['created_at', 'completed_at', 'status']
+    ordering = ['-created_at']
     
     def get_queryset(self):
         """Filter jobs based on design access."""
@@ -563,14 +684,32 @@ class AnalysisJobViewSet(viewsets.ReadOnlyModelViewSet):
 
 class ReviewSessionViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
-    ViewSet for managing design review sessions.
+    ViewSet for managing collaborative design reviews.
     
-    Allows creating review sessions and assigning reviewers.
+    Reviewers can be added/removed and markups can be attached.
     Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
+    
+    Filtering:
+    - ?title=design review - Filter by title (case-insensitive)
+    - ?status=OPEN - Filter by status (OPEN, IN_PROGRESS, COMPLETED, CANCELLED)
+    - ?design_asset=<uuid> - Filter by reviewed design
+    - ?created_by=<user_id> - Filter by creator
+    - ?has_reviewer=<user_id> - Filter by specific reviewer
+    - ?created_after=2025-01-01 - Created after date
+    - ?completed_after=2025-01-01 - Completed after date
+    
+    Search: ?search=design (searches title, description)
+    Ordering: ?ordering=-created_at,status
     """
     queryset = ReviewSession.objects.select_related('design_asset', 'created_by').prefetch_related('reviewers', 'markups').annotate(
         markup_count=Count('markups')
     ).all()
+    permission_classes = [IsAuthenticated, ReviewPermission]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = ReviewSessionFilter
+    search_fields = ['title', 'description']
+    ordering_fields = ['created_at', 'completed_at', 'status']
+    ordering = ['-created_at']
     audit_resource_type = 'ReviewSession'
     permission_classes = [IsAuthenticated, ReviewPermission]
     
@@ -636,14 +775,33 @@ class ReviewSessionViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
 class MarkupViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
-    ViewSet for managing 3D markups/annotations.
+    ViewSet for managing 3D annotations/comments on designs.
     
-    Allows creating comments anchored to 3D coordinates.
+    Each markup is associated with a review session and can be resolved.
     Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
+    
+    Filtering:
+    - ?title=issue - Filter by title (case-insensitive)
+    - ?comment=dimension - Filter by comment text
+    - ?is_resolved=false - Filter unresolved markups
+    - ?priority=HIGH - Filter by priority (LOW, MEDIUM, HIGH, CRITICAL)
+    - ?review_session=<uuid> - Filter by review session
+    - ?author=<user_id> - Filter by markup author
+    - ?author_username=john - Filter by author username
+    - ?created_after=2025-01-01 - Created after date
+    - ?resolved_after=2025-01-01 - Resolved after date
+    
+    Search: ?search=dimension (searches title, comment)
+    Ordering: ?ordering=-created_at,priority
     """
     queryset = Markup.objects.select_related('review_session', 'author').all()
     serializer_class = MarkupSerializer
     permission_classes = [IsAuthenticated, IsReviewerOrReadOnly]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = MarkupFilter
+    search_fields = ['title', 'comment']
+    ordering_fields = ['created_at', 'resolved_at', 'priority', 'is_resolved']
+    ordering = ['-created_at']
     audit_resource_type = 'Markup'
     
     def get_queryset(self):
@@ -691,16 +849,36 @@ class MarkupViewSet(AuditLogMixin, viewsets.ModelViewSet):
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    ViewSet for viewing audit log entries.
+    ViewSet for viewing audit trail (compliance logs).
     
-    Read-only access to immutable audit trail for compliance.
-    Supports filtering by actor, resource, action, and date range.
+    Read-only access to all system actions for CMMC compliance.
+    Admins can view all logs; users see logs for their organization.
+    
+    Filtering:
+    - ?action=CREATE - Filter by action (CREATE, UPDATE, DELETE, VIEW, DOWNLOAD, etc.)
+    - ?actions=CREATE,UPDATE - Multiple actions
+    - ?resource_type=DesignAsset - Filter by resource type
+    - ?resource_id=<uuid> - Filter by specific resource
+    - ?actor_username=john - Filter by user who performed action
+    - ?ip_address=192.168.1.100 - Filter by IP address
+    - ?ip_range=192.168.1.0/24 - Filter by IP range (CIDR)
+    - ?organization=<uuid> - Filter by organization
+    - ?success=true - Filter successful actions
+    - ?timestamp_after=2025-01-01 - Actions after date
+    - ?last_hour=true - Last hour of activity
+    - ?last_day=true - Last 24 hours
+    - ?last_week=true - Last 7 days
+    
+    Search: ?search=john (searches action, resource_type, actor_username)
+    Ordering: ?ordering=-timestamp (default descending by time)
     """
     queryset = AuditLog.objects.all()
     serializer_class = AuditLogSerializer
     permission_classes = [IsAuthenticated]
-    filter_backends = [filters.OrderingFilter]
-    ordering_fields = ['timestamp', 'action', 'actor_username']
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_class = AuditLogFilter
+    search_fields = ['action', 'resource_type', 'actor_username', 'ip_address']
+    ordering_fields = ['timestamp', 'action', 'resource_type']
     ordering = ['-timestamp']
     
     def get_queryset(self):
