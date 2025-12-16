@@ -19,7 +19,7 @@ django-storages[s3]
 boto3
 
 # Validation & File Handling
-python-magic-bin
+python-magic
 jsonschema
 
 # Email

@@ -9,10 +9,11 @@ Provides centralized validation logic for:
 - Managing validation workflows
 """
 import re
+import uuid
 import importlib
 from typing import Dict, List, Any, Optional, Tuple
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction, models
 from django.utils import timezone
 from designs.models import ValidationRule, ValidationResult
 from designs.validators import *
