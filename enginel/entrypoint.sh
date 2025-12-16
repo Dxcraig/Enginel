@@ -1,26 +1,7 @@
 #!/bin/sh
 
-# Wait for database if using local docker-compose setup
-if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -n "$DB_HOST" ]; then
-    echo "Waiting for postgres at ${DB_HOST}:${DB_PORT:-5432}..."
-    while ! nc -z ${DB_HOST} ${DB_PORT:-5432} 2>/dev/null; do
-      sleep 0.1
-    done
-    echo "PostgreSQL started"
-fi
-
-echo "Collecting static files..."
-python manage.py collectstatic --noinput
-
 echo "Running migrations..."
 python manage.py migrate
 
 echo "Starting server..."
-# Use Gunicorn in production, Django runserver in development
-if [ "$RAILWAY_ENVIRONMENT" ]; then
-    echo "Starting Gunicorn on port ${PORT:-8000}..."
-    gunicorn enginel.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-4} --timeout ${GUNICORN_TIMEOUT:-120} --log-level info
-else
-    echo "Starting Django development server..."
-    python manage.py runserver 0.0.0.0:8000
-fi
+python manage.py runserver 0.0.0.0:8000

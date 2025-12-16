@@ -8,7 +8,6 @@ WORKDIR /app
 # Install system dependencies for OpenCASCADE/CadQuery
 RUN apt-get update && apt-get install -y \
     curl \
-    netcat-openbsd \
     libgl1-mesa-glx \
     libglu1-mesa \
     libxrender1 \
@@ -29,11 +28,9 @@ RUN groupadd -r enginel --gid=1000 && \
 COPY enginel/ .
 
 # Change ownership of application files and ensure cache directory exists
-# Also make entrypoint.sh executable
 RUN chown -R enginel:enginel /app && \
     mkdir -p /home/enginel/.cache && \
-    chown -R enginel:enginel /home/enginel/.cache && \
-    chmod +x /app/entrypoint.sh
+    chown -R enginel:enginel /home/enginel/.cache
 
 # Switch to non-root user
 USER enginel
