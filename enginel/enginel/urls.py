@@ -29,6 +29,11 @@ from designs.views import (
     ReviewSessionViewSet,
     MarkupViewSet,
     AuditLogViewSet,
+    health_check,
+    health_detailed,
+    monitoring_dashboard,
+    error_logs,
+    performance_stats,
 )
 
 # Create API router
@@ -47,6 +52,15 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
+    
+    # Health check endpoints
+    path('api/health/', health_check, name='health-check'),
+    path('api/health/detailed/', health_detailed, name='health-detailed'),
+    
+    # Monitoring endpoints (admin only)
+    path('api/monitoring/dashboard/', monitoring_dashboard, name='monitoring-dashboard'),
+    path('api/monitoring/errors/', error_logs, name='error-logs'),
+    path('api/monitoring/performance/', performance_stats, name='performance-stats'),
 ]
 
 # Serve media files in development

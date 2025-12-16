@@ -10,6 +10,7 @@ Handles asynchronous processing of design assets:
 """
 import hashlib
 import logging
+import time
 from celery import shared_task
 from django.core.files.storage import default_storage
 from django.utils import timezone
@@ -18,6 +19,13 @@ from .geometry_processor import GeometryProcessor, GEOMETRY_AVAILABLE
 from .unit_converter import (
     convert_length, convert_area, convert_volume,
     detect_unit_from_filename, get_scale_factor, BASE_UNIT
+)
+from .monitoring import PerformanceMonitor, ErrorTracker, MetricsCollector
+from .exceptions import (
+    GeometryProcessingError,
+    BOMExtractionError,
+    UnitConversionError,
+    raise_geometry_error
 )
 
 logger = logging.getLogger(__name__)
@@ -123,10 +131,22 @@ def process_design_asset(self, design_asset_id):
         
     except DesignAsset.DoesNotExist:
         logger.error(f"DesignAsset {design_asset_id} not found")
+        ErrorTracker.log_error(
+            Exception(f"DesignAsset {design_asset_id} not found"),
+            context={'design_asset_id': str(design_asset_id), 'task': 'process_design_asset'},
+            severity='ERROR'
+        )
         raise
     
     except Exception as exc:
         logger.error(f"Error processing design asset {design_asset_id}: {exc}")
+        
+        # Track error
+        ErrorTracker.log_error(
+            exc,
+            context={'design_asset_id': str(design_asset_id), 'task': 'process_design_asset'},
+            severity='ERROR'
+        )
         
         # Update status to failed
         try:
@@ -142,6 +162,7 @@ def process_design_asset(self, design_asset_id):
 
 
 @shared_task
+@PerformanceMonitor.track_duration('file_hash_calculation')
 def calculate_file_hash(design_asset_id):
     """
     Calculate SHA-256 hash of uploaded file.
@@ -178,6 +199,7 @@ def calculate_file_hash(design_asset_id):
 
 
 @shared_task
+@PerformanceMonitor.track_duration('geometry_extraction')
 def extract_geometry_metadata(design_asset_id):
     """
     Extract geometric metadata from CAD file.
@@ -195,6 +217,8 @@ def extract_geometry_metadata(design_asset_id):
     Returns:
         dict: Metadata including volume, area, mass properties
     """
+    start_time = time.time()
+    
     try:
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Extracting geometry metadata for: {design_asset.filename}")
@@ -217,6 +241,7 @@ def extract_geometry_metadata(design_asset_id):
         
         if not design_asset.file:
             logger.warning(f"No file attached to {design_asset_id}")
+            raise GeometryProcessingError("No file attached to design asset")
             return {'error': 'No file available for processing'}
         
         # Get file path (works with both local storage and S3)

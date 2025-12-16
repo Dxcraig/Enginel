@@ -51,6 +51,12 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
+    # Custom monitoring and error tracking middleware
+    'designs.middleware.ErrorTrackingMiddleware',
+    'designs.middleware.RequestLoggingMiddleware',
+    'designs.middleware.PerformanceMonitoringMiddleware',
+    'designs.middleware.MetricsMiddleware',
 ]
 
 ROOT_URLCONF = 'enginel.urls'

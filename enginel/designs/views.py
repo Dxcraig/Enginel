@@ -46,6 +46,14 @@ from .permissions import (
 )
 from .tasks import process_design_asset
 from .audit import log_audit_event, audit_action, AuditLogMixin
+from .monitoring import HealthChecker, ErrorTracker, PerformanceMonitor, MetricsCollector
+from .exceptions import (
+    OrganizationLimitExceeded,
+    InsufficientPermissions,
+    raise_permission_error
+)
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
@@ -752,4 +760,126 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
         
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+# Health Check and Monitoring Endpoints
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_check(request):
+    """
+    Basic health check endpoint for load balancers.
+    
+    GET /api/health/
+    
+    Returns 200 if service is up.
+    """
+    return Response({'status': 'ok', 'service': 'enginel'})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def health_detailed(request):
+    """
+    Detailed health check with component status.
+    
+    GET /api/health/detailed/
+    
+    Returns health status of all system components.
+    """
+    health_status = HealthChecker.get_full_health_status()
+    
+    # Return 503 if any component is unhealthy
+    if health_status['status'] != 'healthy':
+        return Response(health_status, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    
+    return Response(health_status)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def monitoring_dashboard(request):
+    """
+    Monitoring dashboard with error stats and performance metrics.
+    
+    GET /api/monitoring/dashboard/
+    
+    Requires authentication. Admin-only in production.
+    """
+    # Check if user is admin
+    if not request.user.is_staff:
+        return Response(
+            {'error': 'Admin access required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    # Get recent errors
+    recent_errors = ErrorTracker.get_recent_errors(limit=20)
+    
+    # Get performance stats for key operations
+    perf_stats = {
+        'geometry_extraction': PerformanceMonitor.get_operation_stats('geometry_extraction'),
+        'bom_extraction': PerformanceMonitor.get_operation_stats('bom_extraction'),
+        'unit_normalization': PerformanceMonitor.get_operation_stats('unit_normalization'),
+    }
+    
+    # Get metrics
+    metrics = MetricsCollector.get_metrics()
+    
+    # Get health status
+    health = HealthChecker.get_full_health_status()
+    
+    return Response({
+        'health': health,
+        'recent_errors': recent_errors,
+        'performance': perf_stats,
+        'metrics': metrics,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def error_logs(request):
+    """
+    Get recent error logs.
+    
+    GET /api/monitoring/errors/?limit=50
+    
+    Requires authentication. Admin-only in production.
+    """
+    if not request.user.is_staff:
+        return Response(
+            {'error': 'Admin access required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    limit = int(request.GET.get('limit', 50))
+    errors = ErrorTracker.get_recent_errors(limit=limit)
+    
+    return Response({
+        'count': len(errors),
+        'errors': errors
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def performance_stats(request):
+    """
+    Get performance statistics for all tracked operations.
+    
+    GET /api/monitoring/performance/
+    
+    Requires authentication. Admin-only in production.
+    """
+    if not request.user.is_staff:
+        return Response(
+            {'error': 'Admin access required'},
+            status=status.HTTP_403_FORBIDDEN
+        )
+    
+    stats = PerformanceMonitor.get_all_stats()
+    
+    return Response(stats)
+
 
