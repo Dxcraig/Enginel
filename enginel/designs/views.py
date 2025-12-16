@@ -12,7 +12,7 @@ from django.db.models import Count, Max
 
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
-    AnalysisJob, ReviewSession, Markup
+    AnalysisJob, ReviewSession, Markup, AuditLog
 )
 from .serializers import (
     CustomUserSerializer,
@@ -28,6 +28,7 @@ from .serializers import (
     ReviewSessionSerializer,
     ReviewSessionDetailSerializer,
     MarkupSerializer,
+    AuditLogSerializer,
 )
 from .permissions import (
     DesignAssetPermission,
@@ -38,6 +39,7 @@ from .permissions import (
     IsUSPersonForITAR,
 )
 from .tasks import process_design_asset
+from .audit import log_audit_event, audit_action, AuditLogMixin
 
 
 class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -92,11 +94,12 @@ class DesignSeriesViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class DesignAssetViewSet(viewsets.ModelViewSet):
+class DesignAssetViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing design assets (specific versions of CAD files).
     
     Provides CRUD operations and custom actions for upload/download.
+    Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
     """
     queryset = DesignAsset.objects.select_related('series', 'uploaded_by').all()
     permission_classes = [IsAuthenticated, DesignAssetPermission]
@@ -104,6 +107,7 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
     search_fields = ['filename', 'series__part_number', 'series__name', 'revision']
     ordering_fields = ['created_at', 'version_number']
     ordering = ['-created_at']
+    audit_resource_type = 'DesignAsset'
     
     def get_serializer_class(self):
         """Return appropriate serializer based on action."""
@@ -135,8 +139,10 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
         
         If file is provided, trigger immediate processing.
         If no file, create record for two-phase S3 upload.
+        AuditLogMixin will automatically log CREATE action.
         """
-        serializer.save(uploaded_by=self.request.user)
+        instance = serializer.save(uploaded_by=self.request.user)
+        return instance
     
     @action(detail=False, methods=['post'], url_path='upload-url')
     def request_upload_url(self, request):
@@ -202,6 +208,7 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
         return Response(response_data)
     
     @action(detail=True, methods=['get'])
+    @audit_action('DOWNLOAD')
     def download(self, request, pk=None):
         """
         Get pre-signed download URL.
@@ -218,9 +225,13 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # TODO: Generate pre-signed S3 download URL
-        # TODO: Log download in AuditEntry
+        # For local development, serve file directly
+        if design_asset.file:
+            from django.http import FileResponse
+            response = FileResponse(design_asset.file.open('rb'), as_attachment=True, filename=design_asset.filename)
+            return response
         
+        # TODO: For production, generate pre-signed S3 download URL
         response_data = {
             'download_url': 'https://s3.amazonaws.com/placeholder',
             'expires_in_seconds': 60,
@@ -309,15 +320,17 @@ class AnalysisJobViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
 
-class ReviewSessionViewSet(viewsets.ModelViewSet):
+class ReviewSessionViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing design review sessions.
     
     Allows creating review sessions and assigning reviewers.
+    Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
     """
     queryset = ReviewSession.objects.select_related('design_asset', 'created_by').prefetch_related('reviewers', 'markups').annotate(
         markup_count=Count('markups')
     ).all()
+    audit_resource_type = 'ReviewSession'
     permission_classes = [IsAuthenticated, ReviewPermission]
     
     def get_serializer_class(self):
@@ -380,15 +393,17 @@ class ReviewSessionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class MarkupViewSet(viewsets.ModelViewSet):
+class MarkupViewSet(AuditLogMixin, viewsets.ModelViewSet):
     """
     ViewSet for managing 3D markups/annotations.
     
     Allows creating comments anchored to 3D coordinates.
+    Automatically logs CREATE/UPDATE/DELETE operations via AuditLogMixin.
     """
     queryset = Markup.objects.select_related('review_session', 'author').all()
     serializer_class = MarkupSerializer
     permission_classes = [IsAuthenticated, IsReviewerOrReadOnly]
+    audit_resource_type = 'Markup'
     
     def get_queryset(self):
         """Filter markups based on review session access."""
@@ -431,3 +446,77 @@ class MarkupViewSet(viewsets.ModelViewSet):
         
         serializer = self.get_serializer(markup)
         return Response(serializer.data)
+
+
+class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing audit log entries.
+    
+    Read-only access to immutable audit trail for compliance.
+    Supports filtering by actor, resource, action, and date range.
+    """
+    queryset = AuditLog.objects.all()
+    serializer_class = AuditLogSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['timestamp', 'action', 'actor_username']
+    ordering = ['-timestamp']
+    
+    def get_queryset(self):
+        """Filter audit logs based on query parameters."""
+        queryset = super().get_queryset()
+        
+        # Filter by actor ID
+        actor_id = self.request.query_params.get('actor_id')
+        if actor_id:
+            queryset = queryset.filter(actor_id=actor_id)
+        
+        # Filter by resource type
+        resource_type = self.request.query_params.get('resource_type')
+        if resource_type:
+            queryset = queryset.filter(resource_type=resource_type)
+        
+        # Filter by resource ID
+        resource_id = self.request.query_params.get('resource_id')
+        if resource_id:
+            queryset = queryset.filter(resource_id=resource_id)
+        
+        # Filter by action
+        action = self.request.query_params.get('action')
+        if action:
+            queryset = queryset.filter(action=action)
+        
+        # Filter by date range
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+        if start_date:
+            queryset = queryset.filter(timestamp__gte=start_date)
+        if end_date:
+            queryset = queryset.filter(timestamp__lte=end_date)
+        
+        return queryset
+    
+    @action(detail=False, methods=['get'])
+    def my_actions(self, request):
+        """Get audit logs for current user."""
+        queryset = self.get_queryset().filter(actor_id=request.user.id)
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def downloads(self, request):
+        """Get all download audit logs."""
+        queryset = self.get_queryset().filter(action='DOWNLOAD')
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+

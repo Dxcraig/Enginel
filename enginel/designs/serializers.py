@@ -6,7 +6,7 @@ Handles serialization/deserialization of models to/from JSON.
 from rest_framework import serializers
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
-    AnalysisJob, ReviewSession, Markup
+    AnalysisJob, ReviewSession, Markup, AuditLog
 )
 
 
@@ -418,3 +418,30 @@ class ReviewSessionDetailSerializer(ReviewSessionSerializer):
     
     class Meta(ReviewSessionSerializer.Meta):
         fields = ReviewSessionSerializer.Meta.fields + ['markups', 'design_asset_detail']
+
+
+class AuditLogSerializer(serializers.ModelSerializer):
+    """
+    Serializer for audit log entries.
+    
+    Read-only access to immutable audit trail.
+    """
+    action_display = serializers.CharField(source='get_action_display', read_only=True)
+    
+    class Meta:
+        model = AuditLog
+        fields = [
+            'id',
+            'actor_id',
+            'actor_username',
+            'action',
+            'action_display',
+            'resource_type',
+            'resource_id',
+            'ip_address',
+            'user_agent',
+            'changes',
+            'timestamp',
+        ]
+        read_only_fields = '__all__'  # Audit logs are immutable
+

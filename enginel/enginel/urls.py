@@ -27,6 +27,7 @@ from designs.views import (
     AnalysisJobViewSet,
     ReviewSessionViewSet,
     MarkupViewSet,
+    AuditLogViewSet,
 )
 
 # Create API router
@@ -38,6 +39,7 @@ router.register(r'bom-nodes', AssemblyNodeViewSet, basename='bom-node')
 router.register(r'analysis-jobs', AnalysisJobViewSet, basename='analysis-job')
 router.register(r'reviews', ReviewSessionViewSet, basename='review')
 router.register(r'markups', MarkupViewSet, basename='markup')
+router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
