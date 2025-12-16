@@ -26,12 +26,17 @@ SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-bv3rh7jou6ab=$)q4c%fy7!%1(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-# Railway provides RAILWAY_STATIC_URL and RAILWAY_PUBLIC_DOMAIN
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
-if os.getenv('RAILWAY_ENVIRONMENT'):
-    ALLOWED_HOSTS.append('.railway.app')
-    if os.getenv('RAILWAY_PUBLIC_DOMAIN'):
-        ALLOWED_HOSTS.append(os.getenv('RAILWAY_PUBLIC_DOMAIN'))
+# Railway provides RAILWAY_PUBLIC_DOMAIN
+RAILWAY_PUBLIC_DOMAIN = os.getenv('RAILWAY_PUBLIC_DOMAIN')
+if RAILWAY_PUBLIC_DOMAIN:
+    ALLOWED_HOSTS = [RAILWAY_PUBLIC_DOMAIN, 'localhost', '127.0.0.1']
+else:
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+
+# CSRF Trusted Origins for Railway
+CSRF_TRUSTED_ORIGINS = []
+if RAILWAY_PUBLIC_DOMAIN:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{RAILWAY_PUBLIC_DOMAIN}')
 
 
 # Application definition
@@ -97,26 +102,33 @@ WSGI_APPLICATION = 'enginel.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-# Database configuration - supports both Railway and Docker Compose
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('PGDATABASE', os.getenv('POSTGRES_DB')),
-        'USER': os.getenv('PGUSER', os.getenv('POSTGRES_USER')),
-        'PASSWORD': os.getenv('PGPASSWORD', os.getenv('POSTGRES_PASSWORD')),
-        'HOST': os.getenv('PGHOST', os.getenv('DB_HOST')),
-        'PORT': os.getenv('PGPORT', os.getenv('DB_PORT', '5432')),
+# Railway provides DATABASE_URL, but also support individual env vars
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    # Parse Railway's DATABASE_URL
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(default=DATABASE_URL, conn_max_age=600)
     }
-}
+else:
+    # Fallback to individual environment variables
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('POSTGRES_DB', os.getenv('PGDATABASE')),
+            'USER': os.getenv('POSTGRES_USER', os.getenv('PGUSER')),
+            'PASSWORD': os.getenv('POSTGRES_PASSWORD', os.getenv('PGPASSWORD')),
+            'HOST': os.getenv('DB_HOST', os.getenv('PGHOST', 'localhost')),
+            'PORT': os.getenv('DB_PORT', os.getenv('PGPORT', '5432')),
+        }
+    }
 
-# Cache Configuration - supports Railway Redis (single DB) and Docker Redis (multiple DBs)
+# Cache Configuration
 # https://docs.djangoproject.com/en/5.2/topics/cache/
-# Railway Redis doesn't support multiple databases, so we use different key prefixes
-REDIS_BASE_URL = os.getenv('REDIS_URL', 'redis://redis:6379')
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f'{REDIS_BASE_URL}/1',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/1'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'CONNECTION_POOL_KWARGS': {
@@ -135,7 +147,7 @@ CACHES = {
     # Separate cache for session data
     'sessions': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f'{REDIS_BASE_URL}/2',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/2'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
         },
@@ -145,7 +157,7 @@ CACHES = {
     # Long-term cache for expensive computations
     'longterm': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f'{REDIS_BASE_URL}/3',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/3'),
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
             'COMPRESSOR': 'django_redis.compressors.zlib.ZlibCompressor',
@@ -194,18 +206,11 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_DIRS = []
 
-# WhiteNoise configuration for static files
-STORAGES = {
-    "default": {
-        "BACKEND": "django.core.files.storage.FileSystemStorage",
-    },
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
+# WhiteNoise configuration for efficient static file serving
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files (User uploads)
 # https://docs.djangoproject.com/en/5.2/topics/files/
@@ -268,7 +273,7 @@ REST_FRAMEWORK = {
     'EXCEPTION_HANDLER': 'designs.security_utils.custom_exception_handler',
 }
 
-# Celery Configuration - supports Railway Redis
+# Celery Configuration
 CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 CELERY_RESULT_BACKEND = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
@@ -278,10 +283,6 @@ CELERY_TIMEZONE = 'UTC'
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-
-# Railway-specific: Celery broker connection retry settings
-CELERY_BROKER_CONNECTION_RETRY = True
-CELERY_BROKER_CONNECTION_MAX_RETRIES = 10
 
 # Django Auditlog Configuration
 AUDITLOG_INCLUDE_ALL_MODELS = False  # We're using custom AuditLog model
