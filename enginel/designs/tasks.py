@@ -139,15 +139,20 @@ def calculate_file_hash(design_asset_id):
     try:
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         
-        # TODO: Read file from S3 and calculate hash
-        # For now, return placeholder
+        if not design_asset.file:
+            logger.warning(f"No file attached to {design_asset_id}")
+            return None
+        
         logger.info(f"Calculating hash for: {design_asset.filename}")
         
-        # Placeholder hash
         hasher = hashlib.sha256()
-        hasher.update(design_asset.filename.encode())
-        file_hash = hasher.hexdigest()
         
+        # Read file in chunks to handle large files
+        with design_asset.file.open('rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                hasher.update(chunk)
+        
+        file_hash = hasher.hexdigest()
         logger.info(f"Hash calculated: {file_hash}")
         return file_hash
         
@@ -194,8 +199,20 @@ def extract_geometry_metadata(design_asset_id):
             }
             return metadata
         
-        # Download file from S3 to temporary location
-        file_path = design_asset.file.path if hasattr(design_asset.file, 'path') else str(design_asset.file)
+        if not design_asset.file:
+            logger.warning(f"No file attached to {design_asset_id}")
+            return {'error': 'No file available for processing'}
+        
+        # Get file path (works with both local storage and S3)
+        if hasattr(design_asset.file, 'path'):
+            file_path = design_asset.file.path
+        else:
+            # For S3, download to temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
+                with design_asset.file.open('rb') as f:
+                    tmp_file.write(f.read())
+                file_path = tmp_file.name
         
         # Process with GeometryProcessor
         processor = GeometryProcessor(file_path)
@@ -263,8 +280,19 @@ def run_design_rule_checks(design_asset_id):
             }
             return validation_result
         
-        # Get file path
-        file_path = design_asset.file.path if hasattr(design_asset.file, 'path') else str(design_asset.file)
+        if not design_asset.file:
+            logger.warning(f"No file attached to {design_asset_id}")
+            return {'is_valid': False, 'errors': {'file': 'No file available for validation'}}
+        
+        # Get file path (handle both local and S3 storage)
+        if hasattr(design_asset.file, 'path'):
+            file_path = design_asset.file.path
+        else:
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
+                with design_asset.file.open('rb') as f:
+                    tmp_file.write(f.read())
+                file_path = tmp_file.name
         
         # Run validation with GeometryProcessor
         processor = GeometryProcessor(file_path)

@@ -137,15 +137,21 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
 
 class DesignAssetCreateSerializer(serializers.ModelSerializer):
     """
-    Serializer for initiating design asset upload.
+    Serializer for creating design assets with file upload.
     
-    Used when requesting a pre-signed upload URL.
+    Supports both direct file upload and metadata-only creation
+    (for two-phase upload workflow with S3 presigned URLs).
     """
     tags = serializers.ListField(
         child=serializers.CharField(),
         required=False,
         allow_null=True,
         default=list
+    )
+    file = serializers.FileField(
+        required=False,
+        allow_null=True,
+        help_text="CAD file (STEP/IGES/STL). Optional for presigned URL workflow."
     )
     
     class Meta:
@@ -154,12 +160,33 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
             'series',
             'version_number',
             'filename',
+            'file',
             'revision',
             'description',
             'classification',
             'units',
             'tags',
         ]
+    
+    def validate_file(self, value):
+        """Validate uploaded file."""
+        if value:
+            # Check file extension
+            allowed_extensions = ['.step', '.stp', '.iges', '.igs', '.stl']
+            filename = value.name.lower()
+            if not any(filename.endswith(ext) for ext in allowed_extensions):
+                raise serializers.ValidationError(
+                    f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+                )
+            
+            # Check file size (max 500MB)
+            max_size = 500 * 1024 * 1024
+            if value.size > max_size:
+                raise serializers.ValidationError(
+                    f"File too large. Maximum size: 500MB"
+                )
+        
+        return value
     
     def validate_tags(self, value):
         """Handle null or empty tags."""
@@ -193,6 +220,25 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
                 )
         
         return data
+    
+    def create(self, validated_data):
+        """Create design asset and trigger processing if file uploaded."""
+        from .tasks import process_design_asset
+        
+        file_data = validated_data.pop('file', None)
+        instance = super().create(validated_data)
+        
+        if file_data:
+            instance.file = file_data
+            instance.filename = file_data.name
+            instance.file_size = file_data.size
+            instance.status = 'processing'
+            instance.save()
+            
+            # Trigger async processing
+            process_design_asset.delay(instance.id)
+        
+        return instance
 
 
 class AssemblyNodeSerializer(serializers.ModelSerializer):

@@ -6,6 +6,7 @@ services:
       - 8000:8000
     volumes:
       - ./enginel:/app
+      - media_files:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -51,6 +52,7 @@ services:
     command: celery -A enginel worker --loglevel=info
     volumes:
       - ./enginel:/app
+      - media_files:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -65,6 +67,7 @@ services:
     command: celery -A enginel beat --loglevel=info --schedule=/tmp/celerybeat-schedule
     volumes:
       - ./enginel:/app
+      - media_files:/app/media
     depends_on:
       db:
         condition: service_healthy
@@ -76,3 +79,4 @@ services:
 volumes:
   enginel_db:
   redis_data:
+  media_files:

@@ -241,6 +241,21 @@ class DesignAsset(models.Model):
         max_length=255,
         help_text="Original filename (e.g., 'bracket_v2.step')"
     )
+    
+    def upload_to_path(instance, filename):
+        """Generate upload path: designs/{uuid}/{filename}"""
+        import os
+        ext = os.path.splitext(filename)[1].lower()
+        return f'designs/{instance.id}/{instance.id}{ext}'
+    
+    file = models.FileField(
+        upload_to=upload_to_path,
+        null=True,
+        blank=True,
+        max_length=512,
+        help_text="Actual CAD file (STEP/IGES)"
+    )
+    
     s3_key = models.CharField(
         max_length=512,
         unique=True,

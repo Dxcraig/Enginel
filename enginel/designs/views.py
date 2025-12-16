@@ -130,11 +130,13 @@ class DesignAssetViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        """Set the uploader when creating a design asset."""
-        serializer.save(
-            uploaded_by=self.request.user,
-            status='UPLOADING'
-        )
+        """
+        Create design asset with optional file upload.
+        
+        If file is provided, trigger immediate processing.
+        If no file, create record for two-phase S3 upload.
+        """
+        serializer.save(uploaded_by=self.request.user)
     
     @action(detail=False, methods=['post'], url_path='upload-url')
     def request_upload_url(self, request):
