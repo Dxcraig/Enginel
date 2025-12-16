@@ -87,13 +87,6 @@ services:
       - key: PYTHON_VERSION
         value: "3.13.1"
 
-databases:
-  - name: enginel-db
-    databaseName: enginel_db
-    user: enginel_user
-    plan: starter
-    region: oregon
-
   # Celery Worker
   - type: worker
     name: enginel-celery-worker
@@ -152,9 +145,3 @@ databases:
       - key: DEBUG
         value: false
 
-databases:
-  - name: enginel-db
-    databaseName: enginel_db
-    user: enginel_user
-    plan: starter
-    region: oregon
