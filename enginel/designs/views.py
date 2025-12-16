@@ -348,6 +348,9 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
         
         Returns: {upload_url, design_asset_id, expires_in_seconds}
         """
+        from django.conf import settings
+        from designs.s3_service import get_s3_service, S3ServiceError
+        
         serializer = DesignAssetCreateSerializer(
             data=request.data,
             context={'request': request}
@@ -360,17 +363,59 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
             status='UPLOADING'
         )
         
-        # TODO: Generate pre-signed S3 URL
-        # For now, return placeholder response
-        response_data = {
-            'upload_url': 'https://s3.amazonaws.com/placeholder',
-            'design_asset_id': design_asset.id,
-            'expires_in_seconds': 3600,
-            'fields': {
-                'key': f'designs/{design_asset.id}/{design_asset.filename}',
-                'Content-Type': 'application/octet-stream',
+        # Generate pre-signed S3 URL if S3 is enabled
+        if settings.USE_S3:
+            try:
+                s3_service = get_s3_service()
+                
+                # Generate S3 key
+                s3_key = s3_service.generate_file_key(
+                    organization_id=design_asset.organization.id,
+                    design_asset_id=design_asset.id,
+                    filename=design_asset.filename
+                )
+                
+                # Save S3 key to design asset
+                design_asset.s3_key = s3_key
+                design_asset.save(update_fields=['s3_key'])
+                
+                # Generate pre-signed POST for browser upload
+                presigned_data = s3_service.generate_upload_presigned_post(
+                    file_key=s3_key,
+                    content_type=request.data.get('content_type', 'application/octet-stream'),
+                    metadata={
+                        'organization_id': str(design_asset.organization.id),
+                        'design_asset_id': str(design_asset.id),
+                        'uploaded_by': request.user.username,
+                    }
+                )
+                
+                response_data = {
+                    'upload_url': presigned_data['url'],
+                    'design_asset_id': design_asset.id,
+                    'expires_in_seconds': presigned_data['expires_in'],
+                    'fields': presigned_data['fields'],
+                    's3_key': s3_key,
+                }
+                
+            except S3ServiceError as e:
+                # Rollback design asset creation on S3 error
+                design_asset.delete()
+                return Response(
+                    {'error': f'Failed to generate upload URL: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        else:
+            # Local development - return placeholder
+            response_data = {
+                'upload_url': f'/api/designs/{design_asset.id}/upload/',
+                'design_asset_id': design_asset.id,
+                'expires_in_seconds': 3600,
+                'fields': {
+                    'key': f'designs/{design_asset.id}/{design_asset.filename}',
+                    'Content-Type': 'application/octet-stream',
+                }
             }
-        }
         
         response_serializer = UploadURLResponseSerializer(response_data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
@@ -411,6 +456,9 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
         
         Returns short-lived URL (60s) and logs access.
         """
+        from django.conf import settings
+        from designs.s3_service import get_s3_service, S3ServiceError
+        
         design_asset = self.get_object()
         
         if design_asset.status != 'COMPLETED':
@@ -419,20 +467,57 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # For S3-enabled environments, generate pre-signed download URL
+        if settings.USE_S3 and design_asset.s3_key:
+            try:
+                s3_service = get_s3_service()
+                
+                # Check if file exists in S3
+                if not s3_service.check_file_exists(design_asset.s3_key):
+                    return Response(
+                        {'error': 'File not found in storage'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                
+                # Generate pre-signed download URL
+                download_url = s3_service.generate_download_presigned_url(
+                    file_key=design_asset.s3_key,
+                    response_headers={
+                        'ResponseContentDisposition': f'attachment; filename="{design_asset.filename}"',
+                        'ResponseContentType': 'application/octet-stream',
+                    }
+                )
+                
+                response_data = {
+                    'download_url': download_url,
+                    'expires_in_seconds': settings.AWS_DOWNLOAD_PRESIGNED_URL_EXPIRY,
+                    'filename': design_asset.filename,
+                }
+                
+                response_serializer = DownloadURLResponseSerializer(response_data)
+                return Response(response_serializer.data)
+                
+            except S3ServiceError as e:
+                return Response(
+                    {'error': f'Failed to generate download URL: {str(e)}'},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+        
         # For local development, serve file directly
-        if design_asset.file:
+        elif design_asset.file:
             from django.http import FileResponse
-            response = FileResponse(design_asset.file.open('rb'), as_attachment=True, filename=design_asset.filename)
+            response = FileResponse(
+                design_asset.file.open('rb'),
+                as_attachment=True,
+                filename=design_asset.filename
+            )
             return response
         
-        # TODO: For production, generate pre-signed S3 download URL
-        response_data = {
-            'download_url': 'https://s3.amazonaws.com/placeholder',
-            'expires_in_seconds': 60,
-            'filename': design_asset.filename,
-        }
-        
-        response_serializer = DownloadURLResponseSerializer(response_data)
+        else:
+            return Response(
+                {'error': 'No file available for download'},
+                status=status.HTTP_404_NOT_FOUND
+            )
         return Response(response_serializer.data)
     
     @action(detail=True, methods=['get'])

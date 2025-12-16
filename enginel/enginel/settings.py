@@ -263,3 +263,43 @@ NOTIFICATION_MAX_RETRIES = int(os.getenv('NOTIFICATION_MAX_RETRIES', '3'))
 EMAIL_RATE_LIMIT_PER_USER = int(os.getenv('EMAIL_RATE_LIMIT_PER_USER', '100'))  # Per hour
 EMAIL_RATE_LIMIT_WINDOW = int(os.getenv('EMAIL_RATE_LIMIT_WINDOW', '3600'))  # 1 hour in seconds
 
+# AWS S3 Configuration
+# Django-storages backend configuration
+USE_S3 = os.getenv('USE_S3', 'False') == 'True'
+
+if USE_S3:
+    # AWS Credentials
+    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
+    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
+    AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '')
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
+    
+    # S3 Configuration
+    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+    AWS_S3_OBJECT_PARAMETERS = {
+        'CacheControl': 'max-age=86400',  # 1 day
+    }
+    AWS_DEFAULT_ACL = 'private'  # Keep files private by default
+    AWS_S3_FILE_OVERWRITE = False  # Don't overwrite files with same name
+    AWS_S3_SIGNATURE_VERSION = 's3v4'
+    AWS_S3_ADDRESSING_STYLE = 'virtual'
+    AWS_QUERYSTRING_AUTH = True  # Use pre-signed URLs
+    
+    # Pre-signed URL Configuration
+    AWS_PRESIGNED_URL_EXPIRY = int(os.getenv('AWS_PRESIGNED_URL_EXPIRY', '3600'))  # 1 hour default
+    AWS_UPLOAD_PRESIGNED_URL_EXPIRY = int(os.getenv('AWS_UPLOAD_PRESIGNED_URL_EXPIRY', '3600'))  # 1 hour
+    AWS_DOWNLOAD_PRESIGNED_URL_EXPIRY = int(os.getenv('AWS_DOWNLOAD_PRESIGNED_URL_EXPIRY', '60'))  # 1 minute
+    
+    # Storage Classes
+    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+    STATICFILES_STORAGE = 'storages.backends.s3boto3.S3StaticStorage'
+    
+    # Media files configuration
+    MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
+    MEDIA_ROOT = ''  # Not used with S3
+else:
+    # Local file storage (development)
+    DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
+
