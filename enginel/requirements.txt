@@ -18,3 +18,10 @@ scipy
 django-storages[s3]
 boto3
 
+# Validation & File Handling
+python-magic-bin
+jsonschema
+
+# Email
+django-anymail
+
