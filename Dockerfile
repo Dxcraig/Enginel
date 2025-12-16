@@ -30,7 +30,8 @@ COPY enginel/ .
 # Change ownership of application files and ensure cache directory exists
 RUN chown -R enginel:enginel /app && \
     mkdir -p /home/enginel/.cache && \
-    chown -R enginel:enginel /home/enginel/.cache
+    chown -R enginel:enginel /home/enginel/.cache && \
+    chmod +x /app/entrypoint.sh
 
 # Switch to non-root user
 USER enginel
