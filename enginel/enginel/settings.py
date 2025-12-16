@@ -21,12 +21,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-bv3rh7jou6ab=$)q4c%fy7!%1(xsdkkn^l_^dcile(djjtj4*f'
+SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-bv3rh7jou6ab=$)q4c%fy7!%1(xsdkkn^l_^dcile(djjtj4*f')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
 
 # Application definition
@@ -51,8 +51,15 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.contrib.messages.middleware.SessionMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    
+    # Security middleware (order matters!)
+    'designs.security_middleware.IPBlockingMiddleware',
+    'designs.security_middleware.RateLimitMiddleware',
+    'designs.security_middleware.RequestValidationMiddleware',
+    'designs.security_middleware.SessionSecurityMiddleware',
+    'designs.security_middleware.SecurityHeadersMiddleware',
     
     # Custom monitoring and error tracking middleware
     'designs.middleware.ErrorTrackingMiddleware',
@@ -221,6 +228,24 @@ REST_FRAMEWORK = {
         'rest_framework.filters.OrderingFilter',
     ],
     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S.%fZ',
+    
+    # Security: Rate limiting for DRF
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.ScopedRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': os.getenv('THROTTLE_ANON', '100/hour'),
+        'user': os.getenv('THROTTLE_USER', '1000/hour'),
+        'login': '5/hour',  # Login attempts
+        'register': '3/day',  # Registration attempts
+        'upload': '50/hour',  # File uploads
+        'download': '100/hour',  # File downloads
+    },
+    
+    # Security: Exception handling
+    'EXCEPTION_HANDLER': 'designs.security_utils.custom_exception_handler',
 }
 
 # Celery Configuration
@@ -262,6 +287,70 @@ NOTIFICATION_MAX_RETRIES = int(os.getenv('NOTIFICATION_MAX_RETRIES', '3'))
 # Email Rate Limiting
 EMAIL_RATE_LIMIT_PER_USER = int(os.getenv('EMAIL_RATE_LIMIT_PER_USER', '100'))  # Per hour
 EMAIL_RATE_LIMIT_WINDOW = int(os.getenv('EMAIL_RATE_LIMIT_WINDOW', '3600'))  # 1 hour in seconds
+
+# Security Settings
+# https://docs.djangoproject.com/en/5.2/topics/security/
+
+# HTTPS/SSL Settings (enable in production)
+SECURE_SSL_REDIRECT = os.getenv('SECURE_SSL_REDIRECT', 'False') == 'True'
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if not DEBUG else None
+
+# Cookie Security
+SESSION_COOKIE_SECURE = not DEBUG  # Only send session cookie over HTTPS
+SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookie
+SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
+SESSION_COOKIE_AGE = int(os.getenv('SESSION_COOKIE_AGE', '86400'))  # 24 hours
+
+CSRF_COOKIE_SECURE = not DEBUG  # Only send CSRF cookie over HTTPS
+CSRF_COOKIE_HTTPONLY = True  # Prevent JavaScript access to CSRF cookie
+CSRF_COOKIE_SAMESITE = 'Lax'
+CSRF_USE_SESSIONS = False  # Store CSRF token in cookie (not session)
+
+# CSRF trusted origins for cross-origin requests
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000').split(',')
+
+# CORS Settings (if using django-cors-headers)
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:8000').split(',')
+CORS_ALLOW_CREDENTIALS = True
+
+# Password Validation Enhancement
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': int(os.getenv('PASSWORD_MIN_LENGTH', '12')),
+        }
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+# Security middleware settings
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
+
+# HSTS Settings (enable in production with HTTPS)
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
+# IP Whitelist/Blacklist for security middleware
+IP_WHITELIST = os.getenv('IP_WHITELIST', '').split(',') if os.getenv('IP_WHITELIST') else []
+IP_BLACKLIST = os.getenv('IP_BLACKLIST', '').split(',') if os.getenv('IP_BLACKLIST') else []
+
+# Security Logging
+SECURITY_LOG_ATTACKS = os.getenv('SECURITY_LOG_ATTACKS', 'True') == 'True'
+SECURITY_BLOCK_AFTER_ATTACKS = int(os.getenv('SECURITY_BLOCK_AFTER_ATTACKS', '3'))
+SECURITY_BLOCK_DURATION = int(os.getenv('SECURITY_BLOCK_DURATION', '86400'))  # 24 hours
 
 # AWS S3 Configuration
 # Django-storages backend configuration
