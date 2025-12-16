@@ -6,6 +6,9 @@ python manage.py migrate --noinput
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 
+echo "Creating superuser if needed..."
+python manage.py ensure_superuser
+
 # Detect if we're running on Railway or other production environment
 if [ -n "$RAILWAY_ENVIRONMENT" ] || [ "$DJANGO_ENV" = "production" ]; then
     echo "Starting production server with Gunicorn..."
