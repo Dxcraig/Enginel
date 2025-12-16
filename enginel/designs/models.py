@@ -2,6 +2,8 @@
 Core data models for Enginel - Engineering Intelligence Kernel.
 
 Models:
+- Organization: Multi-tenant organization/company container
+- OrganizationMembership: User membership in organizations with roles
 - CustomUser: Extended user with ITAR compliance fields
 - DesignSeries: Part number container (manages versions)
 - DesignAsset: Specific version of a CAD file with metadata
@@ -14,8 +16,200 @@ Models:
 import uuid
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, RegexValidator
+from django.utils import timezone
 from treebeard.mp_tree import MP_Node
+
+
+class Organization(models.Model):
+    """
+    Multi-tenant organization container.
+    
+    Represents a company, team, or customer organization.
+    All design data is scoped to an organization for complete tenant isolation.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    name = models.CharField(
+        max_length=255,
+        help_text="Organization name (e.g., 'Acme Engineering', 'DoD Customer')"
+    )
+    
+    slug = models.SlugField(
+        max_length=100,
+        unique=True,
+        validators=[
+            RegexValidator(
+                regex=r'^[a-z0-9-]+$',
+                message='Only lowercase letters, numbers, and hyphens allowed'
+            )
+        ],
+        help_text="URL-safe unique identifier (e.g., 'acme-engineering')"
+    )
+    
+    description = models.TextField(
+        blank=True,
+        help_text="Optional description of the organization"
+    )
+    
+    # Organization metadata
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Deactivate to prevent access without deleting data"
+    )
+    
+    # ITAR/Export control
+    is_us_organization = models.BooleanField(
+        default=True,
+        help_text="Is this a US-based organization? (ITAR compliance)"
+    )
+    
+    max_users = models.PositiveIntegerField(
+        default=50,
+        help_text="Maximum number of users allowed in this organization"
+    )
+    
+    max_storage_gb = models.PositiveIntegerField(
+        default=100,
+        help_text="Maximum storage quota in GB"
+    )
+    
+    # Billing/subscription tier
+    TIER_CHOICES = [
+        ('FREE', 'Free Tier'),
+        ('STARTER', 'Starter'),
+        ('PROFESSIONAL', 'Professional'),
+        ('ENTERPRISE', 'Enterprise'),
+    ]
+    
+    subscription_tier = models.CharField(
+        max_length=20,
+        choices=TIER_CHOICES,
+        default='STARTER',
+        help_text="Subscription tier (determines features and limits)"
+    )
+    
+    # Contact information
+    contact_email = models.EmailField(
+        blank=True,
+        help_text="Primary contact email for organization"
+    )
+    
+    contact_phone = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Primary contact phone number"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'organizations'
+        verbose_name = 'Organization'
+        verbose_name_plural = 'Organizations'
+        ordering = ['name']
+        indexes = [
+            models.Index(fields=['slug']),
+            models.Index(fields=['is_active']),
+        ]
+    
+    def __str__(self):
+        return f"{self.name} ({self.slug})"
+    
+    def get_member_count(self):
+        """Returns total number of members."""
+        return self.memberships.count()
+    
+    def get_storage_used_gb(self):
+        """Returns total storage used in GB."""
+        total_bytes = self.design_series.aggregate(
+            total=models.Sum('versions__file_size')
+        )['total'] or 0
+        return round(total_bytes / (1024**3), 2)
+    
+    def is_at_user_limit(self):
+        """Check if organization has reached user limit."""
+        return self.get_member_count() >= self.max_users
+    
+    def is_at_storage_limit(self):
+        """Check if organization has reached storage limit."""
+        return self.get_storage_used_gb() >= self.max_storage_gb
+
+
+class OrganizationMembership(models.Model):
+    """
+    User membership in an organization with role-based permissions.
+    
+    A user can belong to multiple organizations with different roles.
+    """
+    ROLE_CHOICES = [
+        ('OWNER', 'Owner'),           # Full admin access, can delete org
+        ('ADMIN', 'Administrator'),   # Can manage users and settings
+        ('MEMBER', 'Member'),         # Can create and edit designs
+        ('VIEWER', 'Viewer'),         # Read-only access
+        ('GUEST', 'Guest'),           # Limited read access
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='memberships'
+    )
+    
+    user = models.ForeignKey(
+        'CustomUser',
+        on_delete=models.CASCADE,
+        related_name='organization_memberships'
+    )
+    
+    role = models.CharField(
+        max_length=20,
+        choices=ROLE_CHOICES,
+        default='MEMBER',
+        help_text="User's role in this organization"
+    )
+    
+    # Timestamps
+    joined_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'organization_memberships'
+        verbose_name = 'Organization Membership'
+        verbose_name_plural = 'Organization Memberships'
+        unique_together = [['organization', 'user']]
+        ordering = ['-joined_at']
+        indexes = [
+            models.Index(fields=['organization', 'role']),
+            models.Index(fields=['user']),
+        ]
+    
+    def __str__(self):
+        return f"{self.user.username} in {self.organization.name} ({self.role})"
+    
+    def is_owner(self):
+        """Check if user is organization owner."""
+        return self.role == 'OWNER'
+    
+    def is_admin(self):
+        """Check if user has admin privileges."""
+        return self.role in ['OWNER', 'ADMIN']
+    
+    def can_manage_users(self):
+        """Check if user can add/remove members."""
+        return self.role in ['OWNER', 'ADMIN']
+    
+    def can_create_designs(self):
+        """Check if user can create/edit designs."""
+        return self.role in ['OWNER', 'ADMIN', 'MEMBER']
+    
+    def can_view_designs(self):
+        """Check if user can view designs."""
+        return True  # All members can view
 
 
 class CustomUser(AbstractUser):
@@ -121,6 +315,8 @@ class DesignSeries(models.Model):
     Represents an abstract product/part (e.g., "Turbine Blade").
     Container for all versions of a design with a stable part number.
     
+    Scoped to an organization for multi-tenant isolation.
+    
     Example:
     - Part Number: TB-001
     - Name: "Turbine Blade Assembly"
@@ -128,9 +324,17 @@ class DesignSeries(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
+    # Multi-tenant organization
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name='design_series',
+        null=True,  # Temporarily nullable for migration
+        help_text="Organization that owns this design series"
+    )
+    
     part_number = models.CharField(
         max_length=100,
-        unique=True,
         db_index=True,
         help_text="Stable part number across all versions (e.g., 'TB-001', 'BRK-42-A')"
     )
@@ -162,6 +366,10 @@ class DesignSeries(models.Model):
         verbose_name = 'Design Series'
         verbose_name_plural = 'Design Series'
         ordering = ['-created_at']
+        unique_together = [['organization', 'part_number']]
+        indexes = [
+            models.Index(fields=['organization', 'part_number']),
+        ]
     
     def __str__(self):
         return f"{self.part_number} - {self.name}"
@@ -583,6 +791,8 @@ class ReviewSession(models.Model):
     """
     Container for a collaborative design review process.
     Multiple engineers can be assigned to review a design.
+    
+    Scoped to organization - reviewers must be members.
     """
     
     STATUS_CHOICES = [
@@ -594,10 +804,14 @@ class ReviewSession(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
+    # Multi-tenant organization (inherited from design_asset)
+    # Note: We can access via design_asset.series.organization
+    
     design_asset = models.ForeignKey(
         DesignAsset,
         on_delete=models.CASCADE,
-        related_name='review_sessions'
+        related_name='review_sessions',
+        help_text="Design being reviewed"
     )
     
     title = models.CharField(max_length=255)

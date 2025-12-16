@@ -11,10 +11,13 @@ from django.shortcuts import get_object_or_404
 from django.db.models import Count, Max
 
 from .models import (
+    Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog
 )
 from .serializers import (
+    OrganizationSerializer,
+    OrganizationMembershipSerializer,
     CustomUserSerializer,
     DesignSeriesSerializer,
     DesignAssetListSerializer,
@@ -31,6 +34,9 @@ from .serializers import (
     AuditLogSerializer,
 )
 from .permissions import (
+    IsOrganizationMember,
+    CanManageOrganization,
+    CanCreateInOrganization,
     DesignAssetPermission,
     ReviewPermission,
     IsOwnerOrReadOnly,
@@ -40,6 +46,75 @@ from .permissions import (
 )
 from .tasks import process_design_asset
 from .audit import log_audit_event, audit_action, AuditLogMixin
+
+
+class OrganizationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing organizations (multi-tenant containers).
+    
+    Only organization admins can modify settings.
+    """
+    queryset = Organization.objects.filter(is_active=True)
+    serializer_class = OrganizationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['name', 'slug', 'description']
+    ordering_fields = ['name', 'created_at']
+    ordering = ['name']
+    lookup_field = 'slug'
+    
+    def get_queryset(self):
+        """Filter to only organizations user is a member of."""
+        user = self.request.user
+        return Organization.objects.filter(
+            is_active=True,
+            memberships__user=user
+        ).distinct()
+    
+    @action(detail=True, methods=['get'])
+    def members(self, request, slug=None):
+        """Get all members of this organization."""
+        org = self.get_object()
+        memberships = org.memberships.select_related('user').all()
+        serializer = OrganizationMembershipSerializer(memberships, many=True)
+        return Response(serializer.data)
+    
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, CanManageOrganization])
+    def add_member(self, request, slug=None):
+        """Add a user to the organization."""
+        org = self.get_object()
+        
+        if org.is_at_user_limit():
+            return Response(
+                {'error': 'Organization has reached user limit'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user_id = request.data.get('user_id')
+        role = request.data.get('role', 'MEMBER')
+        
+        try:
+            user = CustomUser.objects.get(id=user_id)
+        except CustomUser.DoesNotExist:
+            return Response(
+                {'error': 'User not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        membership, created = OrganizationMembership.objects.get_or_create(
+            organization=org,
+            user=user,
+            defaults={'role': role}
+        )
+        
+        if not created:
+            return Response(
+                {'error': 'User is already a member'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = OrganizationMembershipSerializer(membership)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class CustomUserViewSet(viewsets.ReadOnlyModelViewSet):
@@ -64,20 +139,43 @@ class DesignSeriesViewSet(viewsets.ModelViewSet):
     ViewSet for managing Design Series (Part Numbers).
     
     Each series contains multiple versions of a design.
+    Scoped to user's organizations for multi-tenant isolation.
     """
     queryset = DesignSeries.objects.annotate(
         version_count=Count('versions'),
         latest_version_number=Max('versions__version_number')
-    ).select_related('created_by').all()
+    ).select_related('created_by', 'organization').all()
     serializer_class = DesignSeriesSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsOrganizationMember, CanCreateInOrganization]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['part_number', 'name', 'description']
     ordering_fields = ['part_number', 'created_at']
     ordering = ['-created_at']
     
+    def get_queryset(self):
+        """Filter to only design series in user's organizations."""
+        user = self.request.user
+        user_orgs = user.organization_memberships.values_list('organization_id', flat=True)
+        queryset = self.queryset.filter(organization_id__in=user_orgs)
+        
+        # Optional: filter by specific organization
+        org_slug = self.request.query_params.get('organization')
+        if org_slug:
+            queryset = queryset.filter(organization__slug=org_slug)
+        
+        return queryset
+    
     def perform_create(self, serializer):
-        """Set the creator."""
+        """Set the creator and validate organization membership."""
+        org_id = serializer.validated_data.get('organization').id
+        membership = self.request.user.organization_memberships.filter(
+            organization_id=org_id
+        ).first()
+        
+        if not membership or not membership.can_create_designs():
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("You don't have permission to create designs in this organization")
+        
         serializer.save(created_by=self.request.user)
     
     @action(detail=True, methods=['get'])

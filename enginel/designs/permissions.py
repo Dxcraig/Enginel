@@ -1,10 +1,92 @@
 """
 Custom permissions for Enginel.
 
-Implements ITAR compliance, role-based access control,
-and ownership-based permissions.
+Implements multi-tenant organization isolation, ITAR compliance,
+role-based access control, and ownership-based permissions.
 """
 from rest_framework import permissions
+
+
+class IsOrganizationMember(permissions.BasePermission):
+    """
+    Permission to ensure user belongs to the organization.
+    
+    CRITICAL: Enforces multi-tenant isolation at permission level.
+    """
+    message = "Access denied: You must be a member of this organization."
+    
+    def has_permission(self, request, view):
+        """Check if user has any organization membership."""
+        return request.user.is_authenticated and request.user.organization_memberships.exists()
+    
+    def has_object_permission(self, request, view, obj):
+        """Check if user belongs to the object's organization."""
+        # Get organization from object
+        org = None
+        if hasattr(obj, 'organization'):
+            org = obj.organization
+        elif hasattr(obj, 'series') and hasattr(obj.series, 'organization'):
+            org = obj.series.organization
+        elif hasattr(obj, 'design_asset') and hasattr(obj.design_asset, 'series'):
+            org = obj.design_asset.series.organization
+        
+        if not org:
+            return True  # No organization constraint
+        
+        # Check if user is member of this organization
+        return request.user.organization_memberships.filter(organization=org).exists()
+
+
+class CanManageOrganization(permissions.BasePermission):
+    """
+    Permission for organization management (add/remove users, change settings).
+    Requires OWNER or ADMIN role.
+    """
+    message = "Access denied: Organization management requires OWNER or ADMIN role."
+    
+    def has_object_permission(self, request, view, obj):
+        """Check if user is admin of the organization."""
+        if isinstance(obj, type(request.user.organization_memberships.model)):
+            # obj is Organization
+            org = obj if hasattr(obj, 'memberships') else obj.organization
+        else:
+            org = obj
+        
+        membership = request.user.organization_memberships.filter(
+            organization=org
+        ).first()
+        
+        if not membership:
+            return False
+        
+        return membership.is_admin()
+
+
+class CanCreateInOrganization(permissions.BasePermission):
+    """
+    Permission to create resources in an organization.
+    Requires MEMBER role or higher.
+    """
+    message = "Access denied: Design creation requires MEMBER role or higher."
+    
+    def has_permission(self, request, view):
+        """Check if user can create in any organization."""
+        if request.method not in ['POST', 'PUT', 'PATCH']:
+            return True
+        
+        # Get organization from request data
+        org_id = request.data.get('organization')
+        if not org_id:
+            return True  # Will be handled by serializer validation
+        
+        membership = request.user.organization_memberships.filter(
+            organization_id=org_id
+        ).first()
+        
+        if not membership:
+            return False
+        
+        return membership.can_create_designs()
 
 
 class IsUSPersonForITAR(permissions.BasePermission):
