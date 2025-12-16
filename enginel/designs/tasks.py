@@ -7,6 +7,8 @@ Handles asynchronous processing of design assets:
 - Design rule checks (DRC)
 - BOM extraction
 - Unit normalization
+
+Integrated with task monitoring for progress tracking and metrics.
 """
 import hashlib
 import logging
@@ -21,6 +23,7 @@ from .unit_converter import (
     detect_unit_from_filename, get_scale_factor, BASE_UNIT
 )
 from .monitoring import PerformanceMonitor, ErrorTracker, MetricsCollector
+from .task_monitor import task_metrics, TaskProgressTracker
 from .exceptions import (
     GeometryProcessingError,
     BOMExtractionError,
@@ -46,15 +49,16 @@ def process_design_asset(self, design_asset_id):
         4. Extract BOM if assembly
         5. Update status to COMPLETED or FAILED
     """
+    task_id = self.request.id
+    task_metrics.record_task_start(task_id, 'process_design_asset', 'PROCESSING')
+    
     try:
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Processing design asset: {design_asset.filename}")
         
         # Update status
-        design_asset.status = 'PROCESSING'
-        design_asset.save()
-        
         # Step 1: Calculate file hash
+        TaskProgressTracker.update_progress(task_id, 1, 5, 'Calculating file hash...')
         hash_job = AnalysisJob.objects.create(
             design_asset=design_asset,
             job_type='HASH_CALCULATION',
@@ -73,6 +77,7 @@ def process_design_asset(self, design_asset_id):
         hash_job.save()
         
         # Step 2: Extract geometry metadata
+        TaskProgressTracker.update_progress(task_id, 2, 5, 'Extracting geometry metadata...')
         metadata_job = AnalysisJob.objects.create(
             design_asset=design_asset,
             job_type='GEOMETRY_EXTRACTION',
@@ -90,6 +95,7 @@ def process_design_asset(self, design_asset_id):
         metadata_job.save()
         
         # Step 3: Run design rule checks
+        TaskProgressTracker.update_progress(task_id, 3, 5, 'Running design rule checks...')
         validation_job = AnalysisJob.objects.create(
             design_asset=design_asset,
             job_type='VALIDATION',
@@ -108,6 +114,7 @@ def process_design_asset(self, design_asset_id):
         validation_job.save()
         
         # Step 4: Extract BOM (if assembly file)
+        TaskProgressTracker.update_progress(task_id, 4, 5, 'Extracting BOM structure...')
         try:
             bom_result = extract_bom_from_assembly.delay(design_asset_id).get(timeout=120)
             logger.info(f"BOM extraction result: {bom_result.get('bom_nodes_created', 0)} nodes created")
@@ -122,10 +129,12 @@ def process_design_asset(self, design_asset_id):
             logger.warning(f"Unit normalization failed (non-critical): {unit_error}")
         
         # Mark as completed
+        TaskProgressTracker.update_progress(task_id, 5, 5, 'Processing complete!')
         design_asset.status = 'COMPLETED'
         design_asset.processed_at = timezone.now()
         design_asset.save()
         
+        task_metrics.record_task_completion(task_id, success=True)
         logger.info(f"Successfully processed design asset: {design_asset.filename}")
         return {'status': 'success', 'design_asset_id': str(design_asset_id)}
         
@@ -136,6 +145,7 @@ def process_design_asset(self, design_asset_id):
             context={'design_asset_id': str(design_asset_id), 'task': 'process_design_asset'},
             severity='ERROR'
         )
+        task_metrics.record_task_completion(task_id, success=False, error='DesignAsset not found')
         raise
     
     except Exception as exc:
@@ -147,6 +157,9 @@ def process_design_asset(self, design_asset_id):
             context={'design_asset_id': str(design_asset_id), 'task': 'process_design_asset'},
             severity='ERROR'
         )
+        
+        # Record task failure
+        task_metrics.record_task_completion(task_id, success=False, error=str(exc))
         
         # Update status to failed
         try:

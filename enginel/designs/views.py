@@ -648,6 +648,7 @@ class AnalysisJobViewSet(viewsets.ReadOnlyModelViewSet):
     ViewSet for monitoring Celery background tasks.
     
     Provides real-time status of geometry processing jobs.
+    Includes task monitoring, metrics, and progress tracking.
     
     Filtering:
     - ?task_name=process_design_asset - Filter by task type
@@ -661,6 +662,14 @@ class AnalysisJobViewSet(viewsets.ReadOnlyModelViewSet):
     
     Search: ?search=process (searches task_name, celery_task_id)
     Ordering: ?ordering=-created_at
+    
+    Custom Actions:
+    - GET /api/analysis-jobs/{id}/status/ - Get detailed task status
+    - GET /api/analysis-jobs/{id}/progress/ - Get task progress
+    - POST /api/analysis-jobs/{id}/cancel/ - Cancel running task
+    - GET /api/analysis-jobs/active/ - List all active tasks
+    - GET /api/analysis-jobs/metrics/ - Get task metrics
+    - GET /api/analysis-jobs/failures/ - Get failure analysis
     """
     queryset = AnalysisJob.objects.select_related('design_asset').all()
     serializer_class = AnalysisJobSerializer
@@ -686,6 +695,159 @@ class AnalysisJobViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.exclude(design_asset__classification='ITAR')
         
         return queryset
+    
+    @action(detail=True, methods=['get'])
+    def status(self, request, pk=None):
+        """
+        Get detailed task status including Celery state.
+        
+        GET /api/analysis-jobs/{id}/status/
+        
+        Returns comprehensive task information including:
+        - Current state (PENDING, RUNNING, SUCCESS, FAILURE)
+        - Result data or error message
+        - Duration and timestamps
+        - Progress information if available
+        """
+        from designs.task_monitor import task_monitor
+        
+        job = self.get_object()
+        
+        if not job.celery_task_id:
+            return Response({
+                'error': 'No Celery task ID associated with this job'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        task_info = task_monitor.get_task_info(job.celery_task_id)
+        
+        return Response(task_info)
+    
+    @action(detail=True, methods=['get'])
+    def progress(self, request, pk=None):
+        """
+        Get task progress for long-running operations.
+        
+        GET /api/analysis-jobs/{id}/progress/
+        
+        Returns:
+        - current: Current progress value
+        - total: Total progress value
+        - percent: Percentage complete
+        - status: Status message
+        - updated_at: Last update timestamp
+        """
+        from designs.task_monitor import TaskProgressTracker
+        
+        job = self.get_object()
+        
+        if not job.celery_task_id:
+            return Response({
+                'error': 'No Celery task ID associated with this job'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        progress = TaskProgressTracker.get_progress(job.celery_task_id)
+        
+        if not progress:
+            return Response({
+                'message': 'No progress information available',
+                'percent': 0
+            })
+        
+        return Response(progress)
+    
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        """
+        Cancel a running task.
+        
+        POST /api/analysis-jobs/{id}/cancel/
+        Body: {"terminate": false}  # Optional: force terminate
+        
+        Revokes the task and updates job status.
+        """
+        from designs.task_monitor import task_monitor
+        
+        job = self.get_object()
+        
+        if job.status in ['SUCCESS', 'FAILURE', 'CANCELLED']:
+            return Response({
+                'error': f'Cannot cancel task in {job.status} state'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not job.celery_task_id:
+            return Response({
+                'error': 'No Celery task ID associated with this job'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        terminate = request.data.get('terminate', False)
+        success = task_monitor.cancel_task(job.celery_task_id, terminate=terminate)
+        
+        if success:
+            return Response({
+                'message': 'Task cancelled successfully',
+                'task_id': job.celery_task_id,
+                'terminated': terminate
+            })
+        else:
+            return Response({
+                'error': 'Failed to cancel task'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    @action(detail=False, methods=['get'])
+    def active(self, request):
+        """
+        Get all currently active (running) tasks.
+        
+        GET /api/analysis-jobs/active/
+        
+        Returns list of tasks being processed right now.
+        """
+        from designs.task_monitor import task_monitor
+        
+        active_tasks = task_monitor.get_active_tasks()
+        
+        return Response({
+            'count': len(active_tasks),
+            'tasks': active_tasks
+        })
+    
+    @action(detail=False, methods=['get'])
+    def metrics(self, request):
+        """
+        Get aggregated task metrics.
+        
+        GET /api/analysis-jobs/metrics/
+        Query params:
+        - ?job_type=GEOMETRY_EXTRACTION - Specific job type
+        
+        Returns metrics like success rate, avg duration, etc.
+        """
+        from designs.task_monitor import task_metrics
+        
+        job_type = request.query_params.get('job_type')
+        
+        metrics = task_metrics.get_task_metrics(job_type)
+        
+        return Response(metrics)
+    
+    @action(detail=False, methods=['get'])
+    def failures(self, request):
+        """
+        Get failure analysis for debugging.
+        
+        GET /api/analysis-jobs/failures/
+        Query params:
+        - ?days=7 - Number of days to analyze (default 7)
+        
+        Returns failure statistics and common error messages.
+        """
+        from designs.task_monitor import task_metrics
+        
+        days = int(request.query_params.get('days', 7))
+        
+        analysis = task_metrics.get_failure_analysis(days)
+        
+        return Response(analysis)
 
 
 class ReviewSessionViewSet(AuditLogMixin, viewsets.ModelViewSet):
