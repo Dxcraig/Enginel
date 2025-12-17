@@ -42,7 +42,6 @@ from .permissions import (
     IsUSPersonForITAR,
 )
 from .filters import (
-    OrganizationFilter,
     CustomUserFilter,
     DesignSeriesFilter,
     DesignAssetFilter,
