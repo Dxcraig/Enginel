@@ -1,5 +1,6 @@
 django
 psycopg[binary]
+dj-database-url
 django-auditlog
 django-treebeard
 djangorestframework
