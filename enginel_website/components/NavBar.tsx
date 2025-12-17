@@ -82,8 +82,8 @@ export default function NavBar() {
                   key={item.href}
                   href={item.href}
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${pathname === item.href
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                     }`}
                 >
                   {item.label}
@@ -139,8 +139,8 @@ export default function NavBar() {
 
                   {/* Notification Dropdown */}
                   {showNotifications && (
-                    <NotificationDropdown 
-                      onClose={() => setShowNotifications(false)} 
+                    <NotificationDropdown
+                      onClose={() => setShowNotifications(false)}
                       onUnreadCountChange={setUnreadCount}
                     />
                   )}
@@ -271,8 +271,8 @@ export default function NavBar() {
                   href={item.href}
                   onClick={() => setShowMobileMenu(false)}
                   className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${pathname === item.href
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    ? 'bg-slate-700 text-white'
+                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                     }`}
                 >
                   {item.label}

@@ -44,7 +44,7 @@ export default function DesignDetailPage() {
             ]);
             setDesign(designData);
             setBomNodes(bomData.results);
-            
+
             // Get download URL for preview
             if (designData.s3_key) {
                 try {
@@ -56,7 +56,7 @@ export default function DesignDetailPage() {
                     console.error('Failed to get download URL:', urlErr);
                 }
             }
-            
+
             // Load validation results
             try {
                 const validationData = await ApiClient.get<{ results: ValidationResult[] }>(
@@ -66,7 +66,7 @@ export default function DesignDetailPage() {
             } catch (validationErr) {
                 console.error('Failed to load validation results:', validationErr);
             }
-            
+
             setError('');
         } catch (err: any) {
             setError(err.message || 'Failed to load design details');
@@ -163,8 +163,8 @@ export default function DesignDetailPage() {
                     <button
                         onClick={() => setActiveTab('preview')}
                         className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'preview'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Preview
@@ -172,8 +172,8 @@ export default function DesignDetailPage() {
                     <button
                         onClick={() => setActiveTab('details')}
                         className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'details'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Details
@@ -181,8 +181,8 @@ export default function DesignDetailPage() {
                     <button
                         onClick={() => setActiveTab('bom')}
                         className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'bom'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Bill of Materials
@@ -195,8 +195,8 @@ export default function DesignDetailPage() {
                     <button
                         onClick={() => setActiveTab('validation')}
                         className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${activeTab === 'validation'
-                                ? 'border-blue-500 text-blue-600'
-                                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                            ? 'border-blue-500 text-blue-600'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                             }`}
                     >
                         Validation Results
@@ -235,8 +235,8 @@ export default function DesignDetailPage() {
                         <div>
                             <div className="text-sm text-gray-500 mb-1">Processing Status</div>
                             <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${design.processing_status === 'completed' ? 'bg-green-100 text-green-800' :
-                                    design.processing_status === 'failed' ? 'bg-red-100 text-red-800' :
-                                        'bg-yellow-100 text-yellow-800'
+                                design.processing_status === 'failed' ? 'bg-red-100 text-red-800' :
+                                    'bg-yellow-100 text-yellow-800'
                                 }`}>
                                 {design.processing_status}
                             </span>
@@ -312,12 +312,11 @@ export default function DesignDetailPage() {
                                 {validationResults.map((result) => (
                                     <tr key={result.id} className="hover:bg-gray-50">
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                                result.status === 'PASSED' ? 'bg-green-100 text-green-800' :
-                                                result.status === 'FAILED' ? 'bg-red-100 text-red-800' :
-                                                result.status === 'SKIPPED' ? 'bg-gray-100 text-gray-800' :
-                                                'bg-orange-100 text-orange-800'
-                                            }`}>
+                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${result.status === 'PASSED' ? 'bg-green-100 text-green-800' :
+                                                    result.status === 'FAILED' ? 'bg-red-100 text-red-800' :
+                                                        result.status === 'SKIPPED' ? 'bg-gray-100 text-gray-800' :
+                                                            'bg-orange-100 text-orange-800'
+                                                }`}>
                                                 {result.status}
                                             </span>
                                         </td>

@@ -33,7 +33,7 @@ export default function Home() {
           <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1"/>
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="white" strokeWidth="1" />
               </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
@@ -47,7 +47,7 @@ export default function Home() {
               <span className="block text-blue-400 mt-2">Simplified</span>
             </h1>
             <p className="text-xl sm:text-2xl text-slate-300 mb-8 max-w-3xl mx-auto">
-              Enginel streamlines your design workflow with powerful CAD asset management, 
+              Enginel streamlines your design workflow with powerful CAD asset management,
               real-time collaboration, and intelligent automation
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -70,7 +70,7 @@ export default function Home() {
         {/* Wave Divider */}
         <div className="absolute bottom-0 left-0 right-0">
           <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full">
-            <path d="M0 120L60 105C120 90 240 60 360 45C480 30 600 30 720 37.5C840 45 960 60 1080 67.5C1200 75 1320 75 1380 75L1440 75V120H1380C1320 120 1200 120 1080 120C960 120 840 120 720 120C600 120 480 120 360 120C240 120 120 120 60 120H0Z" fill="white"/>
+            <path d="M0 120L60 105C120 90 240 60 360 45C480 30 600 30 720 37.5C840 45 960 60 1080 67.5C1200 75 1320 75 1380 75L1440 75V120H1380C1320 120 1200 120 1080 120C960 120 840 120 720 120C600 120 480 120 360 120C240 120 120 120 60 120H0Z" fill="white" />
           </svg>
         </div>
       </div>
@@ -192,7 +192,7 @@ export default function Home() {
             <div className="col-span-1 md:col-span-2">
               <h3 className="text-2xl font-bold text-white mb-4">Enginel</h3>
               <p className="text-gray-400 max-w-md">
-                Engineering Intelligence Kernel - A modern platform for CAD asset management, 
+                Engineering Intelligence Kernel - A modern platform for CAD asset management,
                 collaboration, and compliance.
               </p>
             </div>

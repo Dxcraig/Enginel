@@ -25,7 +25,7 @@ export default function LoginPage() {
         } catch (err: any) {
             console.error('Login error:', err);
             let errorMessage = 'Login failed. Please check your credentials.';
-            
+
             if (err?.message) {
                 errorMessage = err.message;
             } else if (err?.details?.detail) {
@@ -37,7 +37,7 @@ export default function LoginPage() {
             } else if (err?.status >= 500) {
                 errorMessage = 'Server error. Please try again later.';
             }
-            
+
             setError(errorMessage);
         } finally {
             setIsLoading(false);

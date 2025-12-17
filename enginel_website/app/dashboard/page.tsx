@@ -423,8 +423,8 @@ export default function DashboardPage() {
                                             </p>
                                         </div>
                                         <span className={`ml-3 px-2 py-1 text-xs font-medium rounded-full ${design.status === 'READY' ? 'bg-green-100 text-green-800' :
-                                                design.status === 'PROCESSING' ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-gray-100 text-gray-800'
+                                            design.status === 'PROCESSING' ? 'bg-blue-100 text-blue-800' :
+                                                'bg-gray-100 text-gray-800'
                                             }`}>
                                             {design.status}
                                         </span>

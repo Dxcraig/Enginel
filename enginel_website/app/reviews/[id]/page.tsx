@@ -247,21 +247,19 @@ export default function ReviewDetailPage() {
                             <nav className="flex">
                                 <button
                                     onClick={() => setActiveTab('comments')}
-                                    className={`px-6 py-4 font-medium text-sm border-b-2 transition-colors ${
-                                        activeTab === 'comments'
+                                    className={`px-6 py-4 font-medium text-sm border-b-2 transition-colors ${activeTab === 'comments'
                                             ? 'border-blue-500 text-blue-600'
                                             : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
+                                        }`}
                                 >
                                     Comments ({markups.length})
                                 </button>
                                 <button
                                     onClick={() => setActiveTab('reviewers')}
-                                    className={`px-6 py-4 font-medium text-sm border-b-2 transition-colors ${
-                                        activeTab === 'reviewers'
+                                    className={`px-6 py-4 font-medium text-sm border-b-2 transition-colors ${activeTab === 'reviewers'
                                             ? 'border-blue-500 text-blue-600'
                                             : 'border-transparent text-gray-500 hover:text-gray-700'
-                                    }`}
+                                        }`}
                                 >
                                     Reviewers ({review.reviewer_usernames?.length || 0})
                                 </button>
@@ -316,11 +314,10 @@ export default function ReviewDetailPage() {
                                             markups.map((markup) => (
                                                 <div
                                                     key={markup.id}
-                                                    className={`p-4 rounded-lg border-l-4 ${
-                                                        markup.is_resolved
+                                                    className={`p-4 rounded-lg border-l-4 ${markup.is_resolved
                                                             ? 'bg-green-50 border-green-500'
                                                             : 'bg-white border-blue-500'
-                                                    }`}
+                                                        }`}
                                                 >
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div className="flex-1">
@@ -333,11 +330,10 @@ export default function ReviewDetailPage() {
                                                         </div>
                                                         <button
                                                             onClick={() => toggleMarkupResolved(markup.id, markup.is_resolved)}
-                                                            className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
-                                                                markup.is_resolved
+                                                            className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${markup.is_resolved
                                                                     ? 'bg-green-100 text-green-800 hover:bg-green-200'
                                                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                                            }`}
+                                                                }`}
                                                         >
                                                             {markup.is_resolved ? '✓ Resolved' : 'Mark Resolved'}
                                                         </button>

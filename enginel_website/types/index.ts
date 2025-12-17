@@ -158,10 +158,10 @@ export interface Notification {
   id: string;
   recipient: string;
   recipient_username?: string;
-  notification_type: 'DESIGN_UPLOADED' | 'DESIGN_APPROVED' | 'DESIGN_REJECTED' | 'DESIGN_UPDATED' | 
-                     'REVIEW_ASSIGNED' | 'REVIEW_STARTED' | 'REVIEW_COMPLETED' | 'REVIEW_COMMENT' |
-                     'MARKUP_ADDED' | 'MARKUP_RESOLVED' | 'MENTION' | 'VALIDATION_FAILED' | 
-                     'VALIDATION_PASSED' | 'JOB_COMPLETED' | 'JOB_FAILED' | 'SYSTEM_ALERT' | 'SECURITY_ALERT';
+  notification_type: 'DESIGN_UPLOADED' | 'DESIGN_APPROVED' | 'DESIGN_REJECTED' | 'DESIGN_UPDATED' |
+  'REVIEW_ASSIGNED' | 'REVIEW_STARTED' | 'REVIEW_COMPLETED' | 'REVIEW_COMMENT' |
+  'MARKUP_ADDED' | 'MARKUP_RESOLVED' | 'MENTION' | 'VALIDATION_FAILED' |
+  'VALIDATION_PASSED' | 'JOB_COMPLETED' | 'JOB_FAILED' | 'SYSTEM_ALERT' | 'SECURITY_ALERT';
   title: string;
   message: string;
   resource_type?: string;

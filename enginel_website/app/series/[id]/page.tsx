@@ -112,9 +112,9 @@ export default function SeriesDetailPage() {
                 <div className="bg-white p-4 rounded-lg shadow">
                     <div className="text-sm text-gray-500 mb-1">Classification</div>
                     <div className={`font-semibold ${series.classification_level === 'Top Secret' ? 'text-red-600' :
-                            series.classification_level === 'Secret' ? 'text-orange-600' :
-                                series.classification_level === 'Confidential' ? 'text-yellow-600' :
-                                    'text-green-600'
+                        series.classification_level === 'Secret' ? 'text-orange-600' :
+                            series.classification_level === 'Confidential' ? 'text-yellow-600' :
+                                'text-green-600'
                         }`}>
                         {series.classification_level}
                     </div>
@@ -189,8 +189,8 @@ export default function SeriesDetailPage() {
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${asset.processing_status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                asset.processing_status === 'failed' ? 'bg-red-100 text-red-800' :
-                                                    'bg-yellow-100 text-yellow-800'
+                                            asset.processing_status === 'failed' ? 'bg-red-100 text-red-800' :
+                                                'bg-yellow-100 text-yellow-800'
                                             }`}>
                                             {asset.processing_status}
                                         </span>
