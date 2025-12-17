@@ -28,4 +28,5 @@ django-anymail
 
 # Production server
 gunicorn
+whitenoise
 
