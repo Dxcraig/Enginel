@@ -668,8 +668,6 @@ class NotificationPreferenceAdmin(admin.ModelAdmin):
                 'notify_markup_added',
                 'notify_job_completed',
                 'notify_job_failed',
-                'notify_organization_invite',
-                'notify_role_changed',
             )
         }),
         ('Quiet Hours', {
@@ -822,7 +820,6 @@ class ValidationRuleAdmin(admin.ModelAdmin):
         'is_active',
         'apply_on_create',
         'apply_on_update',
-        'organization'
     ]
     
     search_fields = [
@@ -867,10 +864,9 @@ class ValidationRuleAdmin(admin.ModelAdmin):
                 'conditions'
             )
         }),
-        ('Organization & Permissions', {
+        ('Metadata', {
             'fields': (
-                'organization',
-                'created_by'
+                'created_by',
             )
         }),
         ('Statistics', {

@@ -14,13 +14,10 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .mixins import CachedViewSetMixin, LongtermCachedMixin, ShortCachedMixin
 
 from .models import (
-    Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog
 )
 from .serializers import (
-    OrganizationSerializer,
-    OrganizationMembershipSerializer,
     CustomUserSerializer,
     DesignSeriesSerializer,
     DesignAssetListSerializer,
@@ -39,9 +36,6 @@ from .serializers import (
 from .permissions import (
     IsOrganizationMember,
     CanManageOrganization,
-    CanCreateInOrganization,
-    DesignAssetPermission,
-    ReviewPermission,
     IsOwnerOrReadOnly,
     CanFinalizeUpload,
     IsReviewerOrReadOnly,
@@ -68,94 +62,6 @@ from .exceptions import (
 )
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
-
-
-class OrganizationViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
-    """
-    ViewSet for managing organizations (multi-tenant containers).
-    
-    Only organization admins can modify settings.
-    Cached for 5 minutes (list/retrieve).
-    
-    Filtering:
-    - ?name=acme - Filter by organization name (case-insensitive)
-    - ?subscription_tier=PROFESSIONAL - Filter by tier
-    - ?is_us_organization=true - ITAR compliance filter
-    - ?min_users=5 - Organizations with at least 5 users
-    - ?max_storage=100 - Organizations using <= 100GB
-    - ?created_after=2025-01-01 - Created after date
-    
-    Search: ?search=engineering (searches name, slug, description)
-    Ordering: ?ordering=-created_at (prefix with - for descending)
-    """
-    queryset = Organization.objects.filter(is_active=True)
-    serializer_class = OrganizationSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = OrganizationFilter
-    search_fields = ['name', 'slug', 'description', 'contact_email']
-    ordering_fields = ['name', 'created_at', 'subscription_tier']
-    ordering = ['name']
-    lookup_field = 'slug'
-    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_class = OrganizationFilter
-    search_fields = ['name', 'slug', 'description', 'contact_email']
-    ordering_fields = ['name', 'created_at', 'subscription_tier']
-    ordering = ['name']
-    lookup_field = 'slug'
-    
-    def get_queryset(self):
-        """Filter to only organizations user is a member of."""
-        user = self.request.user
-        return Organization.objects.filter(
-            is_active=True,
-            memberships__user=user
-        ).distinct()
-    
-    @action(detail=True, methods=['get'])
-    def members(self, request, slug=None):
-        """Get all members of this organization."""
-        org = self.get_object()
-        memberships = org.memberships.select_related('user').all()
-        serializer = OrganizationMembershipSerializer(memberships, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, CanManageOrganization])
-    def add_member(self, request, slug=None):
-        """Add a user to the organization."""
-        org = self.get_object()
-        
-        if org.is_at_user_limit():
-            return Response(
-                {'error': 'Organization has reached user limit'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        user_id = request.data.get('user_id')
-        role = request.data.get('role', 'MEMBER')
-        
-        try:
-            user = CustomUser.objects.get(id=user_id)
-        except CustomUser.DoesNotExist:
-            return Response(
-                {'error': 'User not found'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        
-        membership, created = OrganizationMembership.objects.get_or_create(
-            organization=org,
-            user=user,
-            defaults={'role': role}
-        )
-        
-        if not created:
-            return Response(
-                {'error': 'User is already a member'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        serializer = OrganizationMembershipSerializer(membership)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class CustomUserViewSet(CachedViewSetMixin, viewsets.ReadOnlyModelViewSet):
@@ -197,7 +103,6 @@ class DesignSeriesViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
     ViewSet for managing design series (part numbers).
     
     A design series is a container for multiple versions of the same part.
-    Users can only view/modify series in their organization.
     Cached for 5 minutes (list/retrieve).
     
     Filtering:
@@ -208,7 +113,6 @@ class DesignSeriesViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
     - ?requires_itar_compliance=true - ITAR-controlled parts
     - ?has_versions=true - Parts with uploaded versions
     - ?min_versions=3 - Parts with at least 3 versions
-    - ?organization=<uuid> - Filter by organization
     - ?created_by_username=john - Filter by creator
     - ?created_after=2025-01-01 - Created after date
     
@@ -218,39 +122,17 @@ class DesignSeriesViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
     queryset = DesignSeries.objects.annotate(
         version_count=Count('versions'),
         latest_version_number=Max('versions__version_number')
-    ).select_related('created_by', 'organization').all()
+    ).select_related('created_by').all()
     serializer_class = DesignSeriesSerializer
-    permission_classes = [IsAuthenticated, IsOrganizationMember, CanCreateInOrganization]
+    permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = DesignSeriesFilter
     search_fields = ['part_number', 'name', 'description']
     ordering_fields = ['part_number', 'created_at', 'updated_at', 'status']
     ordering = ['-created_at']
     
-    def get_queryset(self):
-        """Filter to only design series in user's organizations."""
-        user = self.request.user
-        user_orgs = user.organization_memberships.values_list('organization_id', flat=True)
-        queryset = self.queryset.filter(organization_id__in=user_orgs)
-        
-        # Optional: filter by specific organization
-        org_slug = self.request.query_params.get('organization')
-        if org_slug:
-            queryset = queryset.filter(organization__slug=org_slug)
-        
-        return queryset
-    
     def perform_create(self, serializer):
-        """Set the creator and validate organization membership."""
-        org_id = serializer.validated_data.get('organization').id
-        membership = self.request.user.organization_memberships.filter(
-            organization_id=org_id
-        ).first()
-        
-        if not membership or not membership.can_create_designs():
-            from rest_framework.exceptions import PermissionDenied
-            raise PermissionDenied("You don't have permission to create designs in this organization")
-        
+        """Set the creator."""
         serializer.save(created_by=self.request.user)
     
     @action(detail=True, methods=['get'])
@@ -370,7 +252,7 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
                 
                 # Generate S3 key
                 s3_key = s3_service.generate_file_key(
-                    organization_id=design_asset.organization.id,
+                    organization_id=None,
                     design_asset_id=design_asset.id,
                     filename=design_asset.filename
                 )
@@ -384,7 +266,6 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
                     file_key=s3_key,
                     content_type=request.data.get('content_type', 'application/octet-stream'),
                     metadata={
-                        'organization_id': str(design_asset.organization.id),
                         'design_asset_id': str(design_asset.id),
                         'uploaded_by': request.user.username,
                     }
@@ -1489,7 +1370,7 @@ The Enginel Team
 
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
-from .models import ValidationRule, ValidationResult, Organization
+from .models import ValidationRule, ValidationResult
 from .serializers import (
     ValidationRuleSerializer,
     ValidationResultSerializer,
@@ -1646,12 +1527,8 @@ class ValidationResultViewSet(viewsets.ReadOnlyModelViewSet):
         })
     
     def _is_org_admin(self, user):
-        """Check if user is organization admin."""
-        from .models import OrganizationMembership
-        return OrganizationMembership.objects.filter(
-            user=user,
-            role__in=['OWNER', 'ADMIN']
-        ).exists()
+        """Check if user is staff or superuser."""
+        return user.is_staff or user.is_superuser
 
 
 class ValidateFieldView(APIView):
@@ -1662,8 +1539,7 @@ class ValidateFieldView(APIView):
     {
         "model_name": "DesignAsset",
         "field_name": "filename",
-        "value": "test.step",
-        "organization_id": "uuid"
+        "value": "test.step"
     }
     """
     permission_classes = [IsAuthenticated]
@@ -1675,21 +1551,13 @@ class ValidateFieldView(APIView):
         
         data = serializer.validated_data
         
-        # Get organization
-        organization = None
-        if data.get('organization_id'):
-            organization = Organization.objects.filter(id=data['organization_id']).first()
-        elif request.user.organization:
-            organization = request.user.organization
-        
         # Run validation
         service = ValidationService()
         is_valid, results = service.validate_field_value(
             model_name=data['model_name'],
             field_name=data['field_name'],
             value=data['value'],
-            user=request.user,
-            organization=organization
+            user=request.user
         )
         
         return Response({
@@ -1708,8 +1576,7 @@ class ValidateBatchView(APIView):
     {
         "model_name": "DesignAsset",
         "operation": "create",
-        "items": [{...}, {...}],
-        "organization_id": "uuid"
+        "items": [{...}, {...}]
     }
     """
     permission_classes = [IsAuthenticated]
@@ -1720,13 +1587,6 @@ class ValidateBatchView(APIView):
         serializer.is_valid(raise_exception=True)
         
         data = serializer.validated_data
-        
-        # Get organization
-        organization = None
-        if data.get('organization_id'):
-            organization = Organization.objects.filter(id=data['organization_id']).first()
-        elif request.user.organization:
-            organization = request.user.organization
         
         # Note: Batch validation would need model instances
         # For now, return structure
@@ -1754,20 +1614,12 @@ class ValidationReportView(APIView):
         
         data = serializer.validated_data
         
-        # Get organization
-        organization = None
-        if data.get('organization_id'):
-            organization = Organization.objects.filter(id=data['organization_id']).first()
-        elif request.user.organization and not request.user.is_staff:
-            organization = request.user.organization
-        
         # Generate report
         service = ValidationService()
         report = service.get_validation_report(
             model_name=data.get('model_name'),
             start_date=data.get('start_date'),
-            end_date=data.get('end_date'),
-            organization=organization
+            end_date=data.get('end_date')
         )
         
         return Response(report)
@@ -1785,13 +1637,8 @@ class ValidationStatisticsView(APIView):
         """Get validation statistics."""
         user = request.user
         
-        # Get user's organization
-        organization = user.organization if not user.is_staff else None
-        
         # Get rules count
         rules_query = ValidationRule.objects.filter(is_active=True)
-        if organization:
-            rules_query = rules_query.filter(
                 Q(organization=organization) | Q(organization__isnull=True)
             )
         

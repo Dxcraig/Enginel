@@ -14,8 +14,6 @@ Provides comprehensive FilterSet classes using django-filter for:
 import django_filters
 from django.db.models import Q, Count, Sum
 from .models import (
-    Organization,
-    OrganizationMembership,
     CustomUser,
     DesignSeries,
     DesignAsset,
@@ -27,100 +25,6 @@ from .models import (
 )
 
 
-class OrganizationFilter(django_filters.FilterSet):
-    """
-    Advanced filtering for Organizations.
-    
-    Filters:
-    - name: Case-insensitive partial match
-    - subscription_tier: Exact match (FREE, STARTER, PROFESSIONAL, ENTERPRISE)
-    - is_us_organization: Boolean filter for ITAR compliance
-    - min_users/max_users: Filter by member count range
-    - min_storage/max_storage: Filter by storage usage in GB
-    - created_after/created_before: Date range filters
-    """
-    # Text search
-    name = django_filters.CharFilter(lookup_expr='icontains')
-    slug = django_filters.CharFilter(lookup_expr='icontains')
-    
-    # Subscription tier
-    subscription_tier = django_filters.ChoiceFilter(
-        choices=Organization.TIER_CHOICES
-    )
-    
-    # ITAR compliance
-    is_us_organization = django_filters.BooleanFilter()
-    is_active = django_filters.BooleanFilter()
-    
-    # Member count range
-    min_users = django_filters.NumberFilter(
-        method='filter_min_users',
-        label='Minimum number of users'
-    )
-    max_users = django_filters.NumberFilter(
-        method='filter_max_users',
-        label='Maximum number of users'
-    )
-    
-    # Storage usage range (in GB)
-    min_storage = django_filters.NumberFilter(
-        method='filter_min_storage',
-        label='Minimum storage used (GB)'
-    )
-    max_storage = django_filters.NumberFilter(
-        method='filter_max_storage',
-        label='Maximum storage used (GB)'
-    )
-    
-    # Date range filters
-    created_after = django_filters.DateTimeFilter(
-        field_name='created_at',
-        lookup_expr='gte',
-        label='Created after'
-    )
-    created_before = django_filters.DateTimeFilter(
-        field_name='created_at',
-        lookup_expr='lte',
-        label='Created before'
-    )
-    
-    class Meta:
-        model = Organization
-        fields = [
-            'name',
-            'slug',
-            'subscription_tier',
-            'is_us_organization',
-            'is_active',
-        ]
-    
-    def filter_min_users(self, queryset, name, value):
-        """Filter organizations with at least N users."""
-        return queryset.annotate(
-            user_count=Count('memberships')
-        ).filter(user_count__gte=value)
-    
-    def filter_max_users(self, queryset, name, value):
-        """Filter organizations with at most N users."""
-        return queryset.annotate(
-            user_count=Count('memberships')
-        ).filter(user_count__lte=value)
-    
-    def filter_min_storage(self, queryset, name, value):
-        """Filter organizations using at least N GB storage."""
-        bytes_value = value * (1024**3)
-        return queryset.annotate(
-            total_storage=Sum('design_series__versions__file_size')
-        ).filter(total_storage__gte=bytes_value)
-    
-    def filter_max_storage(self, queryset, name, value):
-        """Filter organizations using at most N GB storage."""
-        bytes_value = value * (1024**3)
-        return queryset.annotate(
-            total_storage=Sum('design_series__versions__file_size')
-        ).filter(total_storage__lte=bytes_value)
-
-
 class CustomUserFilter(django_filters.FilterSet):
     """
     Advanced filtering for Users.
@@ -129,7 +33,6 @@ class CustomUserFilter(django_filters.FilterSet):
     - username/email: Case-insensitive partial match
     - security_clearance_level: Exact match
     - is_us_person: ITAR compliance filter
-    - organization: Filter by organization membership
     - is_active/is_staff/is_superuser: Boolean filters
     - joined_after/joined_before: Account creation date range
     """
@@ -162,12 +65,6 @@ class CustomUserFilter(django_filters.FilterSet):
     is_active = django_filters.BooleanFilter()
     is_staff = django_filters.BooleanFilter()
     is_superuser = django_filters.BooleanFilter()
-    
-    # Organization membership
-    member_of_organization = django_filters.UUIDFilter(
-        method='filter_organization_member',
-        label='Member of organization (UUID)'
-    )
     
     # Date range filters
     joined_after = django_filters.DateTimeFilter(
@@ -208,10 +105,6 @@ class CustomUserFilter(django_filters.FilterSet):
         ]
         
         return queryset.filter(security_clearance_level__in=allowed_clearances)
-    
-    def filter_organization_member(self, queryset, name, value):
-        """Filter users who are members of specific organization."""
-        return queryset.filter(organization_memberships__organization_id=value)
 
 
 class DesignSeriesFilter(django_filters.FilterSet):
@@ -225,7 +118,6 @@ class DesignSeriesFilter(django_filters.FilterSet):
     - has_versions: Filter series with/without uploaded versions
     - version_count: Filter by number of versions
     - created_by: Filter by creator user ID
-    - organization: Filter by organization UUID
     - date ranges: created_at, updated_at filters
     """
     # Text search
@@ -268,12 +160,6 @@ class DesignSeriesFilter(django_filters.FilterSet):
     created_by_username = django_filters.CharFilter(
         field_name='created_by__username',
         lookup_expr='icontains'
-    )
-    
-    organization = django_filters.UUIDFilter(field_name='organization__id')
-    organization_slug = django_filters.CharFilter(
-        field_name='organization__slug',
-        lookup_expr='exact'
     )
     
     # Date range filters

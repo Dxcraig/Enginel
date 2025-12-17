@@ -8,7 +8,7 @@ Listens for model save/delete events and:
 from django.db.models.signals import post_save, post_delete, m2m_changed, pre_save
 from django.dispatch import receiver
 from designs.models import (
-    Organization, CustomUser, DesignSeries, DesignAsset,
+    CustomUser, DesignSeries, DesignAsset,
     AssemblyNode, AnalysisJob, ReviewSession, Markup, AuditLog
 )
 from designs.cache import invalidate_model_cache, CacheManager, CacheKey
@@ -17,34 +17,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@receiver([post_save, post_delete], sender=Organization)
-def invalidate_organization_cache(sender, instance, **kwargs):
-    """Invalidate organization caches on save/delete."""
-    invalidate_model_cache(instance, instance.id)
-    
-    # Also invalidate members cache
-    cache_manager = CacheManager('default')
-    cache_manager.delete(CacheKey.org_members(str(instance.id)))
-    cache_manager.delete(CacheKey.org_storage(str(instance.id)))
-    
-    logger.debug(f"Invalidated cache for organization {instance.id}")
-
-
 @receiver([post_save, post_delete], sender=CustomUser)
 def invalidate_user_cache(sender, instance, **kwargs):
     """Invalidate user caches on save/delete."""
     invalidate_model_cache(instance, instance.id)
-    
-    # Invalidate user's organizations cache
-    cache_manager = CacheManager('default')
-    cache_manager.delete(CacheKey.user_organizations(instance.id))
-    
-    # Invalidate permissions cache for all user's organizations
-    for membership in instance.organization_memberships.all():
-        cache_manager.delete(CacheKey.user_permissions(
-            instance.id, 
-            str(membership.organization_id)
-        ))
     
     logger.debug(f"Invalidated cache for user {instance.id}")
 
@@ -57,9 +33,6 @@ def invalidate_series_cache(sender, instance, **kwargs):
     # Invalidate series versions list
     cache_manager = CacheManager('default')
     cache_manager.delete(CacheKey.series_versions(str(instance.id)))
-    
-    # Invalidate organization's design list caches
-    cache_manager.delete_pattern(f"design:list:org={instance.organization_id}:*")
     
     logger.debug(f"Invalidated cache for design series {instance.id}")
 
@@ -81,12 +54,6 @@ def invalidate_design_cache(sender, instance, **kwargs):
     if instance.series:
         cache_manager.delete(CacheKey.series_detail(str(instance.series_id)))
         cache_manager.delete(CacheKey.series_versions(str(instance.series_id)))
-        
-        # Invalidate organization's design list caches
-        cache_manager.delete_pattern(f"design:list:org={instance.series.organization_id}:*")
-        
-        # Invalidate organization storage cache
-        cache_manager.delete(CacheKey.org_storage(str(instance.series.organization_id)))
     
     logger.debug(f"Invalidated cache for design asset {instance.id}")
 
@@ -162,10 +129,6 @@ def invalidate_audit_cache(sender, instance, **kwargs):
     # Invalidate user's audit log cache
     if instance.user:
         cache_manager.delete_pattern(f"audit:user={instance.user_id}:*")
-    
-    # Invalidate organization's audit log cache
-    if instance.organization:
-        cache_manager.delete_pattern(f"audit:org={instance.organization_id}:*")
 
 
 @receiver(m2m_changed, sender=ReviewSession.reviewers.through)
@@ -183,7 +146,7 @@ def invalidate_review_participants_cache(sender, instance, action, **kwargs):
 @receiver(post_save, sender=DesignAsset)
 def notify_design_uploaded(sender, instance, created, **kwargs):
     """
-    Notify organization members when a new design is uploaded.
+    Notify when a new design is uploaded.
     """
     from django.conf import settings
     from designs.notifications import NotificationService

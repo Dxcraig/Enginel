@@ -21,7 +21,6 @@ from django.conf.urls.static import static
 from django.views.generic import RedirectView
 from rest_framework.routers import DefaultRouter
 from designs.views import (
-    OrganizationViewSet,
     CustomUserViewSet,
     DesignSeriesViewSet,
     DesignAssetViewSet,
@@ -60,7 +59,6 @@ from designs.auth_views import (
 
 # Create API router
 router = DefaultRouter()
-router.register(r'organizations', OrganizationViewSet, basename='organization')
 router.register(r'users', CustomUserViewSet, basename='user')
 router.register(r'series', DesignSeriesViewSet, basename='series')
 router.register(r'designs', DesignAssetViewSet, basename='design')

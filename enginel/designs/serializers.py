@@ -5,71 +5,11 @@ Handles serialization/deserialization of models to/from JSON.
 """
 from rest_framework import serializers
 from .models import (
-    Organization, OrganizationMembership,
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
     APIKey, RefreshToken, NotificationPreference, EmailNotification,
     ValidationRule, ValidationResult
 )
-
-
-class OrganizationSerializer(serializers.ModelSerializer):
-    """
-    Serializer for Organization model.
-    """
-    member_count = serializers.SerializerMethodField()
-    storage_used_gb = serializers.SerializerMethodField()
-    
-    class Meta:
-        model = Organization
-        fields = [
-            'id',
-            'name',
-            'slug',
-            'description',
-            'is_active',
-            'is_us_organization',
-            'subscription_tier',
-            'max_users',
-            'max_storage_gb',
-            'member_count',
-            'storage_used_gb',
-            'contact_email',
-            'contact_phone',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'member_count', 'storage_used_gb']
-    
-    def get_member_count(self, obj):
-        return obj.get_member_count()
-    
-    def get_storage_used_gb(self, obj):
-        return obj.get_storage_used_gb()
-
-
-class OrganizationMembershipSerializer(serializers.ModelSerializer):
-    """
-    Serializer for OrganizationMembership model.
-    """
-    username = serializers.CharField(source='user.username', read_only=True)
-    email = serializers.CharField(source='user.email', read_only=True)
-    organization_name = serializers.CharField(source='organization.name', read_only=True)
-    
-    class Meta:
-        model = OrganizationMembership
-        fields = [
-            'id',
-            'organization',
-            'organization_name',
-            'user',
-            'username',
-            'email',
-            'role',
-            'joined_at',
-            'updated_at',
-        ]
-        read_only_fields = ['id', 'joined_at', 'updated_at']
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -78,7 +18,6 @@ class CustomUserSerializer(serializers.ModelSerializer):
     
     Excludes sensitive fields like password hash.
     """
-    organizations = serializers.SerializerMethodField()
     
     class Meta:
         model = CustomUser
@@ -93,19 +32,8 @@ class CustomUserSerializer(serializers.ModelSerializer):
             'organization',
             'phone_number',
             'date_joined',
-            'organizations',
         ]
         read_only_fields = ['id', 'date_joined']
-    
-    def get_organizations(self, obj):
-        """Return list of organizations user belongs to."""
-        memberships = obj.organization_memberships.select_related('organization')
-        return [{
-            'id': str(m.organization.id),
-            'name': m.organization.name,
-            'slug': m.organization.slug,
-            'role': m.role,
-        } for m in memberships]
 
 
 class DesignSeriesSerializer(serializers.ModelSerializer):
@@ -115,14 +43,11 @@ class DesignSeriesSerializer(serializers.ModelSerializer):
     version_count = serializers.IntegerField(read_only=True)
     latest_version_number = serializers.IntegerField(read_only=True)
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
-    organization_name = serializers.CharField(source='organization.name', read_only=True)
     
     class Meta:
         model = DesignSeries
         fields = [
             'id',
-            'organization',
-            'organization_name',
             'part_number',
             'name',
             'description',
@@ -690,7 +615,6 @@ class ValidationRuleSerializer(serializers.ModelSerializer):
     Serializer for ValidationRule model.
     """
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
-    organization_name = serializers.CharField(source='organization.name', read_only=True)
     failure_rate = serializers.SerializerMethodField()
     
     class Meta:
@@ -709,8 +633,6 @@ class ValidationRuleSerializer(serializers.ModelSerializer):
             'apply_on_create',
             'apply_on_update',
             'conditions',
-            'organization',
-            'organization_name',
             'created_by',
             'created_by_username',
             'created_at',
@@ -840,11 +762,6 @@ class FieldValidationSerializer(serializers.Serializer):
         required=True,
         help_text="Value to validate"
     )
-    organization_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Organization context for validation"
-    )
 
 
 class BatchValidationSerializer(serializers.Serializer):
@@ -866,11 +783,6 @@ class BatchValidationSerializer(serializers.Serializer):
         default='create',
         help_text="Operation type"
     )
-    organization_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Organization context"
-    )
 
 
 class ValidationReportSerializer(serializers.Serializer):
@@ -891,9 +803,4 @@ class ValidationReportSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
         help_text="Report end date"
-    )
-    organization_id = serializers.UUIDField(
-        required=False,
-        allow_null=True,
-        help_text="Filter by organization"
     )

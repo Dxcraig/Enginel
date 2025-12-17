@@ -405,32 +405,11 @@ class CacheKey:
         """Cache key for series versions list."""
         return f"series:{series_id}:versions"
     
-    # Organization-related keys
-    @staticmethod
-    def org_detail(org_id: str) -> str:
-        """Cache key for organization detail."""
-        return f"org:{org_id}:detail"
-    
-    @staticmethod
-    def org_members(org_id: str) -> str:
-        """Cache key for organization members."""
-        return f"org:{org_id}:members"
-    
-    @staticmethod
-    def org_storage(org_id: str) -> str:
-        """Cache key for organization storage usage."""
-        return f"org:{org_id}:storage"
-    
     # User-related keys
     @staticmethod
-    def user_permissions(user_id: int, org_id: str) -> str:
-        """Cache key for user permissions in organization."""
-        return f"user:{user_id}:org={org_id}:permissions"
-    
-    @staticmethod
-    def user_organizations(user_id: int) -> str:
-        """Cache key for user's organizations list."""
-        return f"user:{user_id}:organizations"
+    def user_permissions(user_id: int) -> str:
+        """Cache key for user permissions."""
+        return f"user:{user_id}:permissions"
     
     # Review-related keys
     @staticmethod
@@ -450,43 +429,6 @@ class CacheKey:
         filter_str = ':'.join(f"{k}={v}" for k, v in sorted(filters.items()))
         query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
         return f"search:{model}:{query_hash}:{filter_str}"
-
-
-def warm_cache_for_organization(org_id: str):
-    """
-    Pre-populate cache with common queries for an organization.
-    
-    Useful after cache clear or for new organizations.
-    
-    Args:
-        org_id: Organization UUID
-    """
-    from designs.models import Organization, DesignSeries, DesignAsset
-    
-    try:
-        # Warm organization detail
-        org = Organization.objects.get(id=org_id)
-        key = CacheKey.org_detail(org_id)
-        default_cache_manager.set(key, org, timeout=900)  # 15 minutes
-        
-        # Warm storage calculation
-        storage_gb = org.get_storage_used_gb()
-        key = CacheKey.org_storage(org_id)
-        default_cache_manager.set(key, storage_gb, timeout=300)  # 5 minutes
-        
-        # Warm recent designs
-        recent_designs = DesignAsset.objects.filter(
-            series__organization_id=org_id,
-            upload_status='COMPLETED'
-        ).order_by('-created_at')[:20]
-        
-        key = CacheKey.design_list(org_id, recent=True, limit=20)
-        default_cache_manager.set(key, list(recent_designs), timeout=300)
-        
-        logger.info(f"Cache warmed for organization {org_id}")
-        
-    except Exception as e:
-        logger.error(f"Failed to warm cache for organization {org_id}: {e}")
 
 
 def get_cache_stats() -> dict:
