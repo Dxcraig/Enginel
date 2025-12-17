@@ -32,12 +32,12 @@ RUN chown -R enginel:enginel /app && \
     mkdir -p /home/enginel/.cache && \
     chown -R enginel:enginel /home/enginel/.cache && \
     chmod +x /app/entrypoint.sh && \
-    chmod +x /app/entrypoint.sh
+    chmod +x /app/start.sh
 
 # Switch to non-root user
 USER enginel
 
 EXPOSE 8000
 
-# Start command - Railway overrides this with Procfile
-CMD python manage.py migrate && gunicorn enginel.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 4
+# Start command
+CMD ["/app/start.sh"]
