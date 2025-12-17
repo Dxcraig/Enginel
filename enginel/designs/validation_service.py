@@ -48,8 +48,7 @@ class ValidationService:
         self,
         instance,
         operation='create',
-        user=None,
-        organization=None
+        user=None
     ) -> Tuple[bool, List[ValidationResult]]:
         """
         Validate a model instance against all applicable rules.
@@ -58,7 +57,6 @@ class ValidationService:
             instance: Model instance to validate
             operation: 'create' or 'update'
             user: User performing the operation
-            organization: Organization context
         
         Returns:
             Tuple of (is_valid, list of validation results)
@@ -68,8 +66,7 @@ class ValidationService:
         # Get applicable rules
         rules = self._get_applicable_rules(
             model_name=model_name,
-            operation=operation,
-            organization=organization
+            operation=operation
         )
         
         results = []
@@ -93,8 +90,7 @@ class ValidationService:
         model_name: str,
         field_name: str,
         value: Any,
-        user=None,
-        organization=None
+        user=None
     ) -> Tuple[bool, List[ValidationResult]]:
         """
         Validate a specific field value.
@@ -104,7 +100,6 @@ class ValidationService:
             field_name: Name of the field
             value: Value to validate
             user: User performing validation
-            organization: Organization context
         
         Returns:
             Tuple of (is_valid, list of validation results)
@@ -114,11 +109,6 @@ class ValidationService:
             target_field=field_name,
             is_active=True
         )
-        
-        if organization:
-            rules = rules.filter(
-                models.Q(organization=organization) | models.Q(organization__isnull=True)
-            )
         
         results = []
         is_valid = True
@@ -160,8 +150,7 @@ class ValidationService:
         self,
         instances: List[Any],
         operation='create',
-        user=None,
-        organization=None
+        user=None
     ) -> Dict[str, Any]:
         """
         Validate multiple instances in batch.
@@ -184,8 +173,7 @@ class ValidationService:
             is_valid, results = self.validate_model_instance(
                 instance=instance,
                 operation=operation,
-                user=user,
-                organization=organization
+                user=user
             )
             
             if is_valid:
@@ -207,8 +195,7 @@ class ValidationService:
         self,
         model_name: str = None,
         start_date=None,
-        end_date=None,
-        organization=None
+        end_date=None
     ) -> Dict[str, Any]:
         """
         Generate validation report.
@@ -217,7 +204,6 @@ class ValidationService:
             model_name: Filter by model name
             start_date: Filter start date
             end_date: Filter end date
-            organization: Filter by organization
         
         Returns:
             Validation statistics and report
@@ -234,9 +220,6 @@ class ValidationService:
         
         if end_date:
             results = results.filter(validated_at__lte=end_date)
-        
-        if organization:
-            results = results.filter(rule__organization=organization)
         
         # Aggregate statistics
         stats = results.aggregate(
@@ -287,8 +270,7 @@ class ValidationService:
     def _get_applicable_rules(
         self,
         model_name: str,
-        operation: str,
-        organization=None
+        operation: str
     ) -> List[ValidationRule]:
         """Get rules applicable to this validation context."""
         from django.db.models import Q
@@ -303,12 +285,6 @@ class ValidationService:
             rules = rules.filter(apply_on_create=True)
         elif operation == 'update':
             rules = rules.filter(apply_on_update=True)
-        
-        # Filter by organization
-        if organization:
-            rules = rules.filter(
-                Q(organization=organization) | Q(organization__isnull=True)
-            )
         
         return rules.order_by('severity', 'name')
     

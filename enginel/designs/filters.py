@@ -347,7 +347,6 @@ class DesignAssetFilter(django_filters.FilterSet):
     )
     
     series_id = django_filters.UUIDFilter(field_name='series__id')
-    organization = django_filters.UUIDFilter(field_name='series__organization__id')
     
     # Date range filters
     uploaded_after = django_filters.DateTimeFilter(
@@ -745,9 +744,6 @@ class AuditLogFilter(django_filters.FilterSet):
         method='filter_ip_range',
         label='IP range (e.g., 192.168.1.0/24)'
     )
-    
-    # Organization filter
-    organization = django_filters.UUIDFilter(field_name='organization__id')
     
     # Success filter
     success = django_filters.BooleanFilter(

@@ -1404,10 +1404,8 @@ class ValidationRuleViewSet(viewsets.ModelViewSet):
         if user.is_staff:
             return ValidationRule.objects.all()
         
-        # Users see their organization's rules and global rules
-        return ValidationRule.objects.filter(
-            Q(organization=user.organization) | Q(organization__isnull=True)
-        )
+        # Users see all rules
+        return ValidationRule.objects.all()
     
     def perform_create(self, serializer):
         """Set created_by to current user."""
@@ -1491,14 +1489,8 @@ class ValidationResultViewSet(viewsets.ReadOnlyModelViewSet):
             'override_by'
         )
         
-        # Superusers see all results
-        if user.is_staff:
-            return queryset
-        
-        # Users see results for their organization
-        return queryset.filter(
-            Q(rule__organization=user.organization) | Q(rule__organization__isnull=True)
-        )
+        # Return all results
+        return queryset
     
     @action(detail=True, methods=['post'])
     def override(self, request, pk=None):
@@ -1639,8 +1631,6 @@ class ValidationStatisticsView(APIView):
         
         # Get rules count
         rules_query = ValidationRule.objects.filter(is_active=True)
-                Q(organization=organization) | Q(organization__isnull=True)
-            )
         
         total_rules = rules_query.count()
         rules_by_type = {}
@@ -1654,10 +1644,6 @@ class ValidationStatisticsView(APIView):
         last_7_days = timezone.now() - timedelta(days=7)
         
         results_query = ValidationResult.objects.filter(validated_at__gte=last_7_days)
-        if organization:
-            results_query = results_query.filter(
-                Q(rule__organization=organization) | Q(rule__organization__isnull=True)
-            )
         
         total_checks = results_query.count()
         passed = results_query.filter(status='PASSED').count()
