@@ -377,21 +377,32 @@ SECURITY_BLOCK_DURATION = int(os.getenv('SECURITY_BLOCK_DURATION', '86400'))  # 
 USE_S3 = os.getenv('USE_S3', 'False') == 'True'
 
 if USE_S3:
-    # AWS Credentials
+    # AWS Credentials (also works with Cloudflare R2)
     AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID', '')
     AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY', '')
     AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME', '')
-    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
+    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME', 'auto')  # 'auto' for R2
+    
+    # S3/R2 Endpoint Configuration
+    # For AWS S3: leave empty or set to standard S3 endpoint
+    # For Cloudflare R2: set to https://<account-id>.r2.cloudflarestorage.com
+    AWS_S3_ENDPOINT_URL = os.getenv('AWS_S3_ENDPOINT_URL', None)
     
     # S3 Configuration
-    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+    if AWS_S3_ENDPOINT_URL:
+        # Cloudflare R2 custom domain
+        AWS_S3_CUSTOM_DOMAIN = os.getenv('AWS_S3_CUSTOM_DOMAIN', f'{AWS_STORAGE_BUCKET_NAME}.r2.dev')
+    else:
+        # AWS S3 default
+        AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+    
     AWS_S3_OBJECT_PARAMETERS = {
         'CacheControl': 'max-age=86400',  # 1 day
     }
-    AWS_DEFAULT_ACL = 'private'  # Keep files private by default
+    AWS_DEFAULT_ACL = None  # R2 doesn't support ACLs, set to None
     AWS_S3_FILE_OVERWRITE = False  # Don't overwrite files with same name
     AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_S3_ADDRESSING_STYLE = 'virtual'
+    AWS_S3_ADDRESSING_STYLE = 'auto'  # Works with both S3 and R2
     AWS_QUERYSTRING_AUTH = True  # Use pre-signed URLs
     
     # Pre-signed URL Configuration

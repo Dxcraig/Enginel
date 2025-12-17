@@ -38,10 +38,10 @@ class S3Service:
     """
     
     def __init__(self):
-        """Initialize S3 service with AWS credentials."""
+        """Initialize S3 service with AWS credentials or R2 credentials."""
         if not settings.USE_S3:
             raise ImproperlyConfigured(
-                "S3 is not enabled. Set USE_S3=True in environment variables."
+                "S3/R2 is not enabled. Set USE_S3=True in environment variables."
             )
         
         # Validate required settings
