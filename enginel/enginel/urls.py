@@ -18,6 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 from rest_framework.routers import DefaultRouter
 from designs.views import (
     OrganizationViewSet,
@@ -72,6 +73,7 @@ router.register(r'validation/rules', ValidationRuleViewSet, basename='validation
 router.register(r'validation/results', ValidationResultViewSet, basename='validation-result')
 
 urlpatterns = [
+    path('', RedirectView.as_view(url='/admin/', permanent=False), name='home'),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
