@@ -74,6 +74,7 @@ router.register(r'validation/results', ValidationResultViewSet, basename='valida
 
 urlpatterns = [
     path('', RedirectView.as_view(url='/admin/', permanent=False), name='home'),
+    path('accounts/profile/', RedirectView.as_view(url='/api/', permanent=False)),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
