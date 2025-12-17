@@ -9,15 +9,6 @@ redis
 django-redis
 hiredis
 
-# Production web server
-gunicorn
-
-# Static file serving
-whitenoise
-
-# Database URL parsing for Railway
-dj-database-url
-
 # Geometry Processing
 cadquery
 numpy
@@ -33,4 +24,7 @@ jsonschema
 
 # Email
 django-anymail
+
+# Production server
+gunicorn
 

@@ -31,6 +31,7 @@ COPY enginel/ .
 RUN chown -R enginel:enginel /app && \
     mkdir -p /home/enginel/.cache && \
     chown -R enginel:enginel /home/enginel/.cache && \
+    chmod +x /app/entrypoint.sh && \
     chmod +x /app/entrypoint.sh
 
 # Switch to non-root user
@@ -38,4 +39,5 @@ USER enginel
 
 EXPOSE 8000
 
-CMD ["./entrypoint.sh"]
+# Railway will use the Procfile, but provide a default for local development
+CMD ["sh", "-c", "python manage.py migrate && gunicorn enginel.wsgi --bind 0.0.0.0:${PORT:-8000}"]
