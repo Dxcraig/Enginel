@@ -323,11 +323,14 @@ CSRF_COOKIE_HTTPONLY = True  # Prevent JavaScript access to CSRF cookie
 CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False  # Store CSRF token in cookie (not session)
 
-# CSRF trusted origins for cross-origin requests
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://localhost:3000').split(',')
+# CSRF trusted origins for cross-origin requests (supports wildcards like *.railway.app)
+csrf_origins_str = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://localhost:3000')
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in csrf_origins_str.split(',') if origin.strip()]
 
-# CORS Settings (if using django-cors-headers)
-CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:8000').split(',')
+# CORS Settings (does NOT support wildcards - must specify exact domains)
+cors_origins_str = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:8000')
+CORS_ALLOWED_ORIGINS = [origin.strip() for origin in cors_origins_str.split(',') if origin.strip()]
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Login/Logout Redirect URLs
