@@ -39,5 +39,5 @@ USER enginel
 
 EXPOSE 8000
 
-# Railway will use the Procfile, but provide a default for local development
-CMD ["sh", "-c", "python manage.py migrate && gunicorn enginel.wsgi --bind 0.0.0.0:${PORT:-8000}"]
+# Start command - Railway overrides this with Procfile
+CMD python manage.py migrate && gunicorn enginel.wsgi --bind 0.0.0.0:${PORT:-8000} --workers 4
