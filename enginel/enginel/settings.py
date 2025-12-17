@@ -328,6 +328,11 @@ CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000'
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:8000').split(',')
 CORS_ALLOW_CREDENTIALS = True
 
+# Login/Logout Redirect URLs
+LOGIN_REDIRECT_URL = '/api/'
+LOGIN_URL = '/api-auth/login/'
+LOGOUT_REDIRECT_URL = '/admin/'
+
 # Password Validation Enhancement
 AUTH_PASSWORD_VALIDATORS = [
     {
