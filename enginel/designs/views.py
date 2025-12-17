@@ -34,8 +34,8 @@ from .serializers import (
     AuditLogSerializer,
 )
 from .permissions import (
-    IsOrganizationMember,
-    CanManageOrganization,
+    DesignAssetPermission,
+    ReviewPermission,
     IsOwnerOrReadOnly,
     CanFinalizeUpload,
     IsReviewerOrReadOnly,
