@@ -870,6 +870,247 @@ class AuditLog(models.Model):
         return f"{self.action} on {self.resource_type} by {self.actor_username}"
 
 
+class Notification(models.Model):
+    """
+    In-app notification system for real-time user alerts.
+    
+    Tracks all in-app notifications (bell icon) separate from email notifications.
+    Supports read/unread status, archiving, and various notification types.
+    """
+    
+    NOTIFICATION_TYPES = [
+        ('DESIGN_UPLOADED', 'Design Uploaded'),
+        ('DESIGN_APPROVED', 'Design Approved'),
+        ('DESIGN_REJECTED', 'Design Rejected'),
+        ('DESIGN_UPDATED', 'Design Updated'),
+        ('REVIEW_ASSIGNED', 'Review Assigned'),
+        ('REVIEW_STARTED', 'Review Started'),
+        ('REVIEW_COMPLETED', 'Review Completed'),
+        ('REVIEW_COMMENT', 'Review Comment Added'),
+        ('MARKUP_ADDED', 'Markup Added'),
+        ('MARKUP_RESOLVED', 'Markup Resolved'),
+        ('MENTION', 'Mentioned in Comment'),
+        ('VALIDATION_FAILED', 'Validation Failed'),
+        ('VALIDATION_PASSED', 'Validation Passed'),
+        ('JOB_COMPLETED', 'Processing Job Completed'),
+        ('JOB_FAILED', 'Processing Job Failed'),
+        ('SYSTEM_ALERT', 'System Alert'),
+        ('SECURITY_ALERT', 'Security Alert'),
+    ]
+    
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
+    # Recipient
+    recipient = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+        db_index=True,
+        help_text="User who will receive this notification"
+    )
+    
+    # Notification content
+    notification_type = models.CharField(
+        max_length=50,
+        choices=NOTIFICATION_TYPES,
+        db_index=True,
+        help_text="Type of notification"
+    )
+    
+    title = models.CharField(
+        max_length=255,
+        help_text="Notification title/headline"
+    )
+    
+    message = models.TextField(
+        help_text="Notification message body"
+    )
+    
+    # Related resource (optional)
+    resource_type = models.CharField(
+        max_length=50,
+        blank=True,
+        help_text="Type of related resource (e.g., DesignAsset, ReviewSession)"
+    )
+    
+    resource_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="ID of related resource"
+    )
+    
+    # Action URL (where clicking notification takes user)
+    action_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="URL to navigate to when notification is clicked"
+    )
+    
+    # Actor (who triggered the notification)
+    actor = models.ForeignKey(
+        CustomUser,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='triggered_notifications',
+        help_text="User who triggered this notification"
+    )
+    
+    # Status
+    is_read = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Has the user read this notification?"
+    )
+    
+    is_archived = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Has the user archived this notification?"
+    )
+    
+    read_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the notification was read"
+    )
+    
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the notification was archived"
+    )
+    
+    # Priority
+    PRIORITY_CHOICES = [
+        ('LOW', 'Low'),
+        ('NORMAL', 'Normal'),
+        ('HIGH', 'High'),
+        ('URGENT', 'Urgent'),
+    ]
+    
+    priority = models.CharField(
+        max_length=10,
+        choices=PRIORITY_CHOICES,
+        default='NORMAL',
+        db_index=True,
+        help_text="Notification priority level"
+    )
+    
+    # Metadata
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Additional notification data"
+    )
+    
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    # Expiry (for time-sensitive notifications)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="When this notification expires (optional)"
+    )
+    
+    class Meta:
+        db_table = 'notifications'
+        verbose_name = 'Notification'
+        verbose_name_plural = 'Notifications'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['recipient', 'is_read', 'created_at']),
+            models.Index(fields=['recipient', 'is_archived', 'created_at']),
+            models.Index(fields=['notification_type', 'created_at']),
+            models.Index(fields=['resource_type', 'resource_id']),
+        ]
+    
+    def __str__(self):
+        return f"{self.notification_type} for {self.recipient.username}: {self.title}"
+    
+    def mark_as_read(self):
+        """Mark notification as read."""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save(update_fields=['is_read', 'read_at', 'updated_at'])
+    
+    def mark_as_unread(self):
+        """Mark notification as unread."""
+        if self.is_read:
+            self.is_read = False
+            self.read_at = None
+            self.save(update_fields=['is_read', 'read_at', 'updated_at'])
+    
+    def archive(self):
+        """Archive notification."""
+        if not self.is_archived:
+            self.is_archived = True
+            self.archived_at = timezone.now()
+            self.save(update_fields=['is_archived', 'archived_at', 'updated_at'])
+    
+    def unarchive(self):
+        """Unarchive notification."""
+        if self.is_archived:
+            self.is_archived = False
+            self.archived_at = None
+            self.save(update_fields=['is_archived', 'archived_at', 'updated_at'])
+    
+    def is_expired(self):
+        """Check if notification has expired."""
+        if self.expires_at:
+            return timezone.now() > self.expires_at
+        return False
+    
+    @classmethod
+    def create_notification(cls, recipient, notification_type, title, message, **kwargs):
+        """
+        Helper method to create notifications easily.
+        
+        Usage:
+            Notification.create_notification(
+                recipient=user,
+                notification_type='DESIGN_UPLOADED',
+                title='New Design Uploaded',
+                message='A new design has been uploaded to series XYZ',
+                resource_type='DesignAsset',
+                resource_id=design.id,
+                action_url=f'/designs/{design.id}',
+                actor=uploader
+            )
+        """
+        return cls.objects.create(
+            recipient=recipient,
+            notification_type=notification_type,
+            title=title,
+            message=message,
+            **kwargs
+        )
+    
+    @classmethod
+    def mark_all_as_read(cls, recipient):
+        """Mark all unread notifications as read for a user."""
+        return cls.objects.filter(
+            recipient=recipient,
+            is_read=False
+        ).update(
+            is_read=True,
+            read_at=timezone.now()
+        )
+    
+    @classmethod
+    def get_unread_count(cls, recipient):
+        """Get count of unread notifications for a user."""
+        return cls.objects.filter(
+            recipient=recipient,
+            is_read=False,
+            is_archived=False
+        ).count()
+
+
 class NotificationPreference(models.Model):
     """
     User preferences for email notifications.

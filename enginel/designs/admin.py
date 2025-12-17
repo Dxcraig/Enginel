@@ -9,7 +9,7 @@ from django.db.models import Count
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
-    NotificationPreference, EmailNotification,
+    NotificationPreference, EmailNotification, Notification,
     ValidationRule, ValidationResult
 )
 
@@ -681,6 +681,115 @@ class NotificationPreferenceAdmin(admin.ModelAdmin):
             'fields': ('created_at', 'updated_at')
         }),
     )
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    """Admin interface for in-app Notifications."""
+    
+    list_display = [
+        'id',
+        'recipient',
+        'notification_type',
+        'title',
+        'is_read',
+        'is_archived',
+        'priority',
+        'created_at'
+    ]
+    
+    list_filter = [
+        'notification_type',
+        'is_read',
+        'is_archived',
+        'priority',
+        'created_at',
+    ]
+    
+    search_fields = [
+        'title',
+        'message',
+        'recipient__username',
+        'recipient__email',
+        'actor__username'
+    ]
+    
+    readonly_fields = ['id', 'created_at', 'updated_at', 'read_at', 'archived_at']
+    
+    date_hierarchy = 'created_at'
+    
+    fieldsets = (
+        ('Recipient', {
+            'fields': ('recipient', 'actor')
+        }),
+        ('Notification Content', {
+            'fields': (
+                'notification_type',
+                'title',
+                'message',
+                'priority',
+            )
+        }),
+        ('Related Resource', {
+            'fields': (
+                'resource_type',
+                'resource_id',
+                'action_url',
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Status', {
+            'fields': (
+                'is_read',
+                'read_at',
+                'is_archived',
+                'archived_at',
+            )
+        }),
+        ('Metadata', {
+            'fields': (
+                'metadata',
+                'expires_at',
+            ),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('id', 'created_at', 'updated_at'),
+            'classes': ('collapse',)
+        }),
+    )
+    
+    actions = ['mark_as_read', 'mark_as_unread', 'archive_notifications']
+    
+    def mark_as_read(self, request, queryset):
+        """Mark selected notifications as read."""
+        count = 0
+        for notification in queryset:
+            if not notification.is_read:
+                notification.mark_as_read()
+                count += 1
+        self.message_user(request, f'{count} notification(s) marked as read.')
+    mark_as_read.short_description = 'Mark selected as read'
+    
+    def mark_as_unread(self, request, queryset):
+        """Mark selected notifications as unread."""
+        count = 0
+        for notification in queryset:
+            if notification.is_read:
+                notification.mark_as_unread()
+                count += 1
+        self.message_user(request, f'{count} notification(s) marked as unread.')
+    mark_as_unread.short_description = 'Mark selected as unread'
+    
+    def archive_notifications(self, request, queryset):
+        """Archive selected notifications."""
+        count = 0
+        for notification in queryset:
+            if not notification.is_archived:
+                notification.archive()
+                count += 1
+        self.message_user(request, f'{count} notification(s) archived.')
+    archive_notifications.short_description = 'Archive selected notifications'
 
 
 @admin.register(EmailNotification)

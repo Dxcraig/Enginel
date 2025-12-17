@@ -378,13 +378,13 @@ def revoke_api_key_view(request, pk):
         )
 
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 @permission_classes([IsAuthenticated])
 def verify_token_view(request):
     """
     Verify current token is valid and return user info.
     
-    GET /api/auth/verify/
+    GET/POST /api/auth/verify/
     Headers:
         Authorization: Token abc123...
     

@@ -592,8 +592,8 @@ class ReviewSessionFilter(django_filters.FilterSet):
     # Status
     status = django_filters.ChoiceFilter(
         choices=[
-            ('OPEN', 'Open'),
-            ('IN_PROGRESS', 'In Progress'),
+            ('DRAFT', 'Draft'),
+            ('ACTIVE', 'Active'),
             ('COMPLETED', 'Completed'),
             ('CANCELLED', 'Cancelled'),
         ]

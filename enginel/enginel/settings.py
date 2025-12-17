@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework.authtoken',
     'django_filters',
+    'corsheaders',
     'designs',
     'treebeard',
 ]
@@ -48,6 +49,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',  # Serve static files
+    'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -244,19 +246,19 @@ REST_FRAMEWORK = {
     ],
     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S.%fZ',
     
-    # Security: Rate limiting for DRF
-    'DEFAULT_THROTTLE_CLASSES': [
+    # Security: Rate limiting for DRF (disabled in DEBUG mode)
+    'DEFAULT_THROTTLE_CLASSES': [] if DEBUG else [
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle',
         'rest_framework.throttling.ScopedRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': os.getenv('THROTTLE_ANON', '100/hour'),
-        'user': os.getenv('THROTTLE_USER', '1000/hour'),
-        'login': '5/hour',  # Login attempts
-        'register': '3/day',  # Registration attempts
-        'upload': '50/hour',  # File uploads
-        'download': '100/hour',  # File downloads
+        'anon': os.getenv('THROTTLE_ANON', '10000/hour'),
+        'user': os.getenv('THROTTLE_USER', '10000/hour'),
+        'login': '100/hour',  # Login attempts
+        'register': '100/day',  # Registration attempts
+        'upload': '500/hour',  # File uploads
+        'download': '1000/hour',  # File downloads
     },
     
     # Security: Exception handling
@@ -322,7 +324,7 @@ CSRF_COOKIE_SAMESITE = 'Lax'
 CSRF_USE_SESSIONS = False  # Store CSRF token in cookie (not session)
 
 # CSRF trusted origins for cross-origin requests
-CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000').split(',')
+CSRF_TRUSTED_ORIGINS = os.getenv('CSRF_TRUSTED_ORIGINS', 'http://localhost:8000,http://localhost:3000').split(',')
 
 # CORS Settings (if using django-cors-headers)
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:3000,http://localhost:8000').split(',')

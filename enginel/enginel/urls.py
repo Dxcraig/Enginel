@@ -29,6 +29,7 @@ from designs.views import (
     ReviewSessionViewSet,
     MarkupViewSet,
     AuditLogViewSet,
+    NotificationViewSet,
     health_check,
     health_detailed,
     monitoring_dashboard,
@@ -66,6 +67,7 @@ router.register(r'bom-nodes', AssemblyNodeViewSet, basename='bom-node')
 router.register(r'analysis-jobs', AnalysisJobViewSet, basename='analysis-job')
 router.register(r'reviews', ReviewSessionViewSet, basename='review')
 router.register(r'markups', MarkupViewSet, basename='markup')
+router.register(r'notifications', NotificationViewSet, basename='notification')
 router.register(r'audit-logs', AuditLogViewSet, basename='audit-log')
 router.register(r'validation/rules', ValidationRuleViewSet, basename='validation-rule')
 router.register(r'validation/results', ValidationResultViewSet, basename='validation-result')

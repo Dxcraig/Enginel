@@ -8,7 +8,7 @@ from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
     APIKey, RefreshToken, NotificationPreference, EmailNotification,
-    ValidationRule, ValidationResult
+    ValidationRule, ValidationResult, Notification
 )
 
 
@@ -568,6 +568,118 @@ class NotificationPreferenceSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['user', 'created_at', 'updated_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for in-app Notification model.
+    """
+    actor_username = serializers.CharField(source='actor.username', read_only=True, allow_null=True)
+    actor_email = serializers.EmailField(source='actor.email', read_only=True, allow_null=True)
+    recipient_username = serializers.CharField(source='recipient.username', read_only=True)
+    is_expired = serializers.SerializerMethodField()
+    time_ago = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'recipient',
+            'recipient_username',
+            'notification_type',
+            'title',
+            'message',
+            'resource_type',
+            'resource_id',
+            'action_url',
+            'actor',
+            'actor_username',
+            'actor_email',
+            'is_read',
+            'is_archived',
+            'read_at',
+            'archived_at',
+            'priority',
+            'metadata',
+            'created_at',
+            'updated_at',
+            'expires_at',
+            'is_expired',
+            'time_ago',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at', 'is_expired', 'time_ago']
+    
+    def get_is_expired(self, obj):
+        """Check if notification has expired."""
+        return obj.is_expired()
+    
+    def get_time_ago(self, obj):
+        """Return human-readable time since creation."""
+        from django.utils import timezone
+        from datetime import datetime, timedelta
+        
+        now = timezone.now()
+        diff = now - obj.created_at
+        
+        if diff < timedelta(minutes=1):
+            return 'just now'
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() / 60)
+            return f'{minutes}m ago'
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() / 3600)
+            return f'{hours}h ago'
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f'{days}d ago'
+        else:
+            return obj.created_at.strftime('%b %d')
+
+
+class NotificationListSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for notification lists (excludes heavy fields).
+    """
+    actor_username = serializers.CharField(source='actor.username', read_only=True, allow_null=True)
+    time_ago = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Notification
+        fields = [
+            'id',
+            'notification_type',
+            'title',
+            'message',
+            'action_url',
+            'actor_username',
+            'is_read',
+            'priority',
+            'created_at',
+            'time_ago',
+        ]
+        read_only_fields = ['id', 'created_at', 'time_ago']
+    
+    def get_time_ago(self, obj):
+        """Return human-readable time since creation."""
+        from django.utils import timezone
+        from datetime import timedelta
+        
+        now = timezone.now()
+        diff = now - obj.created_at
+        
+        if diff < timedelta(minutes=1):
+            return 'just now'
+        elif diff < timedelta(hours=1):
+            minutes = int(diff.total_seconds() / 60)
+            return f'{minutes}m ago'
+        elif diff < timedelta(days=1):
+            hours = int(diff.total_seconds() / 3600)
+            return f'{hours}h ago'
+        elif diff < timedelta(days=7):
+            days = diff.days
+            return f'{days}d ago'
+        else:
+            return obj.created_at.strftime('%b %d')
 
 
 class EmailNotificationSerializer(serializers.ModelSerializer):

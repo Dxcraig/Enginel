@@ -15,7 +15,7 @@ from .mixins import CachedViewSetMixin, LongtermCachedMixin, ShortCachedMixin
 
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
-    AnalysisJob, ReviewSession, Markup, AuditLog
+    AnalysisJob, ReviewSession, Markup, AuditLog, Notification
 )
 from .serializers import (
     CustomUserSerializer,
@@ -32,6 +32,7 @@ from .serializers import (
     ReviewSessionDetailSerializer,
     MarkupSerializer,
     AuditLogSerializer,
+    NotificationSerializer,
 )
 from .permissions import (
     DesignAssetPermission,
@@ -90,10 +91,22 @@ class CustomUserViewSet(CachedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     ordering_fields = ['username', 'date_joined', 'last_login']
     ordering = ['username']
     
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get', 'patch', 'put'])
     def me(self, request):
-        """Get current user's information."""
-        serializer = self.get_serializer(request.user)
+        """Get or update current user's information."""
+        if request.method == 'GET':
+            serializer = self.get_serializer(request.user)
+            return Response(serializer.data)
+        
+        # Handle PATCH/PUT
+        partial = request.method == 'PATCH'
+        serializer = self.get_serializer(
+            request.user,
+            data=request.data,
+            partial=partial
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
         return Response(serializer.data)
 
 
@@ -980,6 +993,144 @@ class MarkupViewSet(AuditLogMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+class NotificationViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for in-app notifications.
+    
+    Users can only access their own notifications.
+    Supports filtering by read status, type, and priority.
+    
+    Filtering:
+    - ?is_read=false - Show only unread notifications
+    - ?is_read=true - Show only read notifications
+    - ?is_archived=false - Show only non-archived notifications
+    - ?notification_type=REVIEW_ASSIGNED - Filter by notification type
+    - ?priority=HIGH - Filter by priority level
+    - ?resource_type=DesignAsset - Filter by related resource type
+    - ?resource_id=<uuid> - Filter by specific resource
+    
+    Search: ?search=design (searches title, message)
+    Ordering: ?ordering=-created_at (default descending by creation time)
+    
+    Actions:
+    - GET /notifications/ - List user's notifications
+    - GET /notifications/<id>/ - Get specific notification
+    - PATCH /notifications/<id>/ - Update notification (mark as read, etc.)
+    - DELETE /notifications/<id>/ - Delete notification
+    - POST /notifications/<id>/mark_as_read/ - Mark single notification as read
+    - POST /notifications/mark_all_as_read/ - Mark all notifications as read
+    - POST /notifications/<id>/archive/ - Archive notification
+    - GET /notifications/unread_count/ - Get unread notification count
+    """
+    serializer_class = NotificationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['title', 'message']
+    ordering_fields = ['created_at', 'priority', 'is_read']
+    ordering = ['-created_at']
+    
+    def get_queryset(self):
+        """Return only notifications for current user."""
+        user = self.request.user
+        queryset = Notification.objects.filter(recipient=user)
+        
+        # Filter by read status
+        is_read = self.request.query_params.get('is_read')
+        if is_read is not None:
+            is_read_bool = is_read.lower() == 'true'
+            queryset = queryset.filter(is_read=is_read_bool)
+        
+        # Filter by archived status
+        is_archived = self.request.query_params.get('is_archived')
+        if is_archived is not None:
+            is_archived_bool = is_archived.lower() == 'true'
+            queryset = queryset.filter(is_archived=is_archived_bool)
+        else:
+            # By default, exclude archived notifications
+            queryset = queryset.filter(is_archived=False)
+        
+        # Filter by notification type
+        notification_type = self.request.query_params.get('notification_type')
+        if notification_type:
+            queryset = queryset.filter(notification_type=notification_type)
+        
+        # Filter by priority
+        priority = self.request.query_params.get('priority')
+        if priority:
+            queryset = queryset.filter(priority=priority)
+        
+        # Filter by resource
+        resource_type = self.request.query_params.get('resource_type')
+        if resource_type:
+            queryset = queryset.filter(resource_type=resource_type)
+        
+        resource_id = self.request.query_params.get('resource_id')
+        if resource_id:
+            queryset = queryset.filter(resource_id=resource_id)
+        
+        return queryset
+    
+    def get_serializer_class(self):
+        """Use lightweight serializer for list view."""
+        if self.action == 'list':
+            from .serializers import NotificationListSerializer
+            return NotificationListSerializer
+        return NotificationSerializer
+    
+    @action(detail=True, methods=['post'])
+    def mark_as_read(self, request, pk=None):
+        """Mark notification as read."""
+        notification = self.get_object()
+        notification.mark_as_read()
+        return Response({'status': 'notification marked as read'})
+    
+    @action(detail=True, methods=['post'])
+    def mark_as_unread(self, request, pk=None):
+        """Mark notification as unread."""
+        notification = self.get_object()
+        notification.mark_as_unread()
+        return Response({'status': 'notification marked as unread'})
+    
+    @action(detail=False, methods=['post'])
+    def mark_all_as_read(self, request):
+        """Mark all notifications as read for current user."""
+        count = Notification.mark_all_as_read(request.user)
+        return Response({
+            'status': 'all notifications marked as read',
+            'count': count
+        })
+    
+    @action(detail=True, methods=['post'])
+    def archive(self, request, pk=None):
+        """Archive notification."""
+        notification = self.get_object()
+        notification.archive()
+        return Response({'status': 'notification archived'})
+    
+    @action(detail=True, methods=['post'])
+    def unarchive(self, request, pk=None):
+        """Unarchive notification."""
+        notification = self.get_object()
+        notification.unarchive()
+        return Response({'status': 'notification unarchived'})
+    
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        """Get count of unread notifications."""
+        try:
+            if not request.user or not request.user.is_authenticated:
+                return Response({'count': 0}, status=200)
+            
+            count = Notification.get_unread_count(request.user)
+            return Response({'count': count})
+        except Exception as e:
+            # Log the error but return a graceful response
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error fetching unread count: {str(e)}")
+            return Response({'count': 0, 'error': str(e)}, status=200)
+
+
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet for viewing audit trail (compliance logs).
@@ -1390,7 +1541,7 @@ class ValidationRuleViewSet(viewsets.ModelViewSet):
     serializer_class = ValidationRuleSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ['rule_type', 'target_model', 'severity', 'is_active', 'organization']
+    filterset_fields = ['rule_type', 'target_model', 'severity', 'is_active']
     search_fields = ['name', 'description', 'target_field']
     ordering_fields = ['created_at', 'name', 'total_checks', 'total_failures']
     ordering = ['-created_at']
