@@ -40,9 +40,9 @@ class DesignSeriesSerializer(serializers.ModelSerializer):
     """
     Serializer for Design Series (Part Numbers).
     """
-    version_count = serializers.IntegerField(read_only=True)
-    latest_version_number = serializers.IntegerField(read_only=True)
-    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+    version_count = serializers.IntegerField(read_only=True, required=False)
+    latest_version_number = serializers.IntegerField(read_only=True, required=False)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True, required=False)
     
     class Meta:
         model = DesignSeries
@@ -57,7 +57,28 @@ class DesignSeriesSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'version_count', 'latest_version_number', 'created_by_username']
+    
+    def validate_part_number(self, value):
+        """Validate part number format and uniqueness."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Part number cannot be empty.")
+        
+        # Check for duplicate part numbers (case-insensitive)
+        if self.instance is None:  # Creating new instance
+            if DesignSeries.objects.filter(part_number__iexact=value).exists():
+                raise serializers.ValidationError(f"A series with part number '{value}' already exists.")
+        else:  # Updating existing instance
+            if DesignSeries.objects.filter(part_number__iexact=value).exclude(pk=self.instance.pk).exists():
+                raise serializers.ValidationError(f"A series with part number '{value}' already exists.")
+        
+        return value.strip()
+    
+    def validate_name(self, value):
+        """Validate name field."""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Name cannot be empty.")
+        return value.strip()
 
 
 class DesignAssetListSerializer(serializers.ModelSerializer):

@@ -143,6 +143,25 @@ class DesignSeriesViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
     ordering_fields = ['part_number', 'created_at', 'updated_at', 'status']
     ordering = ['-created_at']
     
+    def create(self, request, *args, **kwargs):
+        """Create a new design series with detailed error logging."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"Series creation request - Data: {request.data}")
+        logger.info(f"Series creation request - User: {request.user}")
+        
+        try:
+            serializer = self.get_serializer(data=request.data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except Exception as e:
+            logger.error(f"Series creation error: {str(e)}")
+            logger.error(f"Validation errors: {getattr(serializer, 'errors', 'No serializer errors')}")
+            raise
+    
     def perform_create(self, serializer):
         """Set the creator."""
         serializer.save(created_by=self.request.user)
