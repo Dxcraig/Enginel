@@ -21,7 +21,7 @@ from designs.models import (
     ReviewSession,
     Markup,
     AnalysisJob,
-    Organization,
+    # Organization model removed - multi-tenant feature not fully implemented
 )
 import logging
 
@@ -81,8 +81,9 @@ class NotificationService:
             'MARKUP_ADDED': 'notify_markup_added',
             'JOB_COMPLETED': 'notify_job_completed',
             'JOB_FAILED': 'notify_job_failed',
-            'ORGANIZATION_INVITE': 'notify_organization_invite',
-            'ROLE_CHANGED': 'notify_role_changed',
+            # Organization features disabled - model removed
+            # 'ORGANIZATION_INVITE': 'notify_organization_invite',
+            # 'ROLE_CHANGED': 'notify_role_changed',
         }
         
         pref_field = type_mapping.get(notification_type)
@@ -176,11 +177,9 @@ class NotificationService:
             followers: List of CustomUser instances to notify (optional)
         """
         if followers is None:
-            # Get organization members
-            followers = CustomUser.objects.filter(
-                organization_memberships__organization=design_asset.series.organization,
-                organization_memberships__role__in=['OWNER', 'ADMIN', 'MEMBER']
-            ).exclude(id=design_asset.uploaded_by.id)
+            # Organization feature disabled - just notify uploader for now
+            # In future, could notify based on series followers or project members
+            followers = []
         
         for user in followers:
             subject = f"New design uploaded: {design_asset.series.part_number}"
@@ -452,72 +451,18 @@ The Enginel Team
             priority='HIGH'
         )
     
-    @staticmethod
-    def notify_organization_invite(user, organization, inviter, role='MEMBER'):
-        """Notify user when invited to join an organization."""
-        subject = f"Invitation to join {organization.name}"
-        message = f"""
-Hello {user.first_name or user.username},
-
-{inviter.username} has invited you to join {organization.name} as a {role}.
-
-Organization: {organization.name}
-Description: {organization.description or 'No description provided'}
-Role: {role}
-
-Log in to Enginel to accept or decline this invitation.
-
-Best regards,
-The Enginel Team
-        """.strip()
-        
-        return NotificationService.create_notification(
-            recipient=user,
-            notification_type='ORGANIZATION_INVITE',
-            subject=subject,
-            message_plain=message,
-            context_data={
-                'organization_id': str(organization.id),
-                'organization_name': organization.name,
-                'inviter': inviter.username,
-                'role': role,
-            },
-            priority='HIGH'
-        )
+    # Organization invite feature disabled - Organization model removed
+    # @staticmethod
+    # def notify_organization_invite(user, organization, inviter, role='MEMBER'):
+    #     """Notify user when invited to join an organization."""
+    #     pass
     
     @staticmethod
-    def notify_role_changed(user, organization, old_role, new_role, changed_by):
-        """Notify user when their role in an organization changes."""
-        subject = f"Your role in {organization.name} has changed"
-        message = f"""
-Hello {user.first_name or user.username},
-
-Your role in {organization.name} has been updated:
-
-Previous role: {old_role}
-New role: {new_role}
-Changed by: {changed_by.username}
-
-This change affects your permissions and access levels in the organization.
-
-Best regards,
-The Enginel Team
-        """.strip()
-        
-        return NotificationService.create_notification(
-            recipient=user,
-            notification_type='ROLE_CHANGED',
-            subject=subject,
-            message_plain=message,
-            context_data={
-                'organization_id': str(organization.id),
-                'organization_name': organization.name,
-                'old_role': old_role,
-                'new_role': new_role,
-                'changed_by': changed_by.username,
-            },
-            priority='HIGH'
-        )
+    # Organization role change feature disabled - Organization model removed
+    # @staticmethod  
+    # def notify_role_changed(user, organization, old_role, new_role, changed_by):
+    #     \"\"\"Notify user when their role in an organization changes.\"\"\"
+    #     pass
 
 
 class EmailSender:
