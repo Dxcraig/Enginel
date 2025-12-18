@@ -4,6 +4,7 @@ Serializers for Enginel API.
 Handles serialization/deserialization of models to/from JSON.
 """
 from rest_framework import serializers
+from django.db.models import Max
 from .models import (
     CustomUser, DesignSeries, DesignAsset, AssemblyNode,
     AnalysisJob, ReviewSession, Markup, AuditLog,
@@ -64,15 +65,23 @@ class DesignSeriesSerializer(serializers.ModelSerializer):
         if not value or not value.strip():
             raise serializers.ValidationError("Part number cannot be empty.")
         
+        value = value.strip()
+        
         # Check for duplicate part numbers (case-insensitive)
         if self.instance is None:  # Creating new instance
             if DesignSeries.objects.filter(part_number__iexact=value).exists():
-                raise serializers.ValidationError(f"A series with part number '{value}' already exists.")
+                # Suggest alternatives
+                import random
+                suggestion = f"{value}-{random.randint(100, 999)}"
+                raise serializers.ValidationError(
+                    f"A series with part number '{value}' already exists. "
+                    f"Try a unique identifier like '{suggestion}' or use a timestamp."
+                )
         else:  # Updating existing instance
             if DesignSeries.objects.filter(part_number__iexact=value).exclude(pk=self.instance.pk).exists():
                 raise serializers.ValidationError(f"A series with part number '{value}' already exists.")
         
-        return value.strip()
+        return value
     
     def validate_name(self, value):
         """Validate name field."""
@@ -176,6 +185,16 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="CAD file (STEP/IGES/STL). Optional for presigned URL workflow."
     )
+    version_number = serializers.IntegerField(
+        required=False,
+        default=1,
+        help_text="Version number (defaults to 1 if not provided)"
+    )
+    filename = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="Filename (auto-populated from file if not provided)"
+    )
     
     class Meta:
         model = DesignAsset
@@ -229,10 +248,28 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate(self, data):
-        """Ensure version number doesn't already exist for the series."""
+        """Ensure version number doesn't already exist for the series and auto-populate fields."""
         series = data.get('series')
+        file_data = data.get('file')
+        
+        # Auto-populate filename from file if not provided
+        if file_data and not data.get('filename'):
+            data['filename'] = file_data.name
+        
+        # Auto-populate version_number if not provided
+        if not data.get('version_number'):
+            if series:
+                # Get the next version number for this series
+                latest_version = DesignAsset.objects.filter(series=series).aggregate(
+                    Max('version_number')
+                )['version_number__max']
+                data['version_number'] = (latest_version or 0) + 1
+            else:
+                data['version_number'] = 1
+        
         version_number = data.get('version_number')
         
+        # Check for duplicate versions
         if series and version_number:
             if DesignAsset.objects.filter(
                 series=series,
@@ -249,17 +286,29 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
         from .tasks import process_design_asset
         
         file_data = validated_data.pop('file', None)
+        
+        # Ensure filename is set
+        if file_data and not validated_data.get('filename'):
+            validated_data['filename'] = file_data.name
+        
         instance = super().create(validated_data)
         
         if file_data:
             instance.file = file_data
-            instance.filename = file_data.name
             instance.file_size = file_data.size
-            instance.status = 'processing'
+            instance.status = 'PROCESSING'
             instance.save()
             
             # Trigger async processing
-            process_design_asset.delay(instance.id)
+            try:
+                process_design_asset.delay(instance.id)
+            except Exception as e:
+                # If Celery is not available, log the error but don't fail
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Failed to queue processing task: {e}")
+                instance.status = 'PENDING'
+                instance.save()
         
         return instance
 

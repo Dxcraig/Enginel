@@ -452,16 +452,16 @@ The Enginel Team
         )
     
     # Organization invite feature disabled - Organization model removed
+    # Organization invite feature disabled - Organization model removed
     # @staticmethod
     # def notify_organization_invite(user, organization, inviter, role='MEMBER'):
     #     """Notify user when invited to join an organization."""
     #     pass
     
-    @staticmethod
     # Organization role change feature disabled - Organization model removed
     # @staticmethod  
     # def notify_role_changed(user, organization, old_role, new_role, changed_by):
-    #     \"\"\"Notify user when their role in an organization changes.\"\"\"
+    #     """Notify user when their role in an organization changes."""
     #     pass
 
 

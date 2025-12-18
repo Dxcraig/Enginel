@@ -248,8 +248,20 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
         If no file, create record for two-phase S3 upload.
         AuditLogMixin will automatically log CREATE action.
         """
-        instance = serializer.save(uploaded_by=self.request.user)
-        return instance
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        logger.info(f"DesignAsset creation - User: {self.request.user}")
+        logger.info(f"DesignAsset creation - Data: {self.request.data}")
+        logger.info(f"DesignAsset creation - Files: {self.request.FILES}")
+        
+        try:
+            instance = serializer.save(uploaded_by=self.request.user)
+            logger.info(f"DesignAsset created successfully - ID: {instance.id}")
+            return instance
+        except Exception as e:
+            logger.error(f"DesignAsset creation failed: {str(e)}")
+            raise
     
     @action(detail=False, methods=['post'], url_path='upload-url')
     def request_upload_url(self, request):
