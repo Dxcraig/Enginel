@@ -256,21 +256,13 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
         if file_data and not data.get('filename'):
             data['filename'] = file_data.name
         
-        # Auto-populate version_number if not provided
-        if not data.get('version_number'):
-            if series:
-                # Get the next version number for this series
-                latest_version = DesignAsset.objects.filter(series=series).aggregate(
-                    Max('version_number')
-                )['version_number__max']
-                data['version_number'] = (latest_version or 0) + 1
-            else:
-                data['version_number'] = 1
+        # Note: version_number auto-increment happens in create() with proper locking
+        # to prevent race conditions
         
         version_number = data.get('version_number')
         
-        # Check for duplicate versions
-        if series and version_number:
+        # Only check for duplicate if version_number was explicitly provided
+        if version_number and series:
             if DesignAsset.objects.filter(
                 series=series,
                 version_number=version_number
@@ -283,6 +275,7 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         """Create design asset and trigger processing if file uploaded."""
+        from django.db import transaction
         from .tasks import process_design_asset
         
         file_data = validated_data.pop('file', None)
@@ -290,6 +283,23 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
         # Ensure filename is set
         if file_data and not validated_data.get('filename'):
             validated_data['filename'] = file_data.name
+        
+        # Auto-assign version_number with proper locking to prevent race conditions
+        if not validated_data.get('version_number'):
+            series = validated_data.get('series')
+            if series:
+                with transaction.atomic():
+                    # Lock the series to prevent concurrent version assignments
+                    from .models import DesignSeries
+                    DesignSeries.objects.select_for_update().filter(pk=series.pk).first()
+                    
+                    # Get the next version number
+                    latest_version = DesignAsset.objects.filter(series=series).aggregate(
+                        Max('version_number')
+                    )['version_number__max']
+                    validated_data['version_number'] = (latest_version or 0) + 1
+            else:
+                validated_data['version_number'] = 1
         
         instance = super().create(validated_data)
         
