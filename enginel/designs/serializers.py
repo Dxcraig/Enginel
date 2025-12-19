@@ -285,10 +285,10 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
             validated_data['filename'] = file_data.name
         
         # Auto-assign version_number with proper locking to prevent race conditions
-        if not validated_data.get('version_number'):
-            series = validated_data.get('series')
-            if series:
-                with transaction.atomic():
+        with transaction.atomic():
+            if not validated_data.get('version_number'):
+                series = validated_data.get('series')
+                if series:
                     # Lock the series to prevent concurrent version assignments
                     from .models import DesignSeries
                     DesignSeries.objects.select_for_update().filter(pk=series.pk).first()
@@ -298,10 +298,11 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
                         Max('version_number')
                     )['version_number__max']
                     validated_data['version_number'] = (latest_version or 0) + 1
-            else:
-                validated_data['version_number'] = 1
-        
-        instance = super().create(validated_data)
+                else:
+                    validated_data['version_number'] = 1
+            
+            # Create the instance inside the transaction to maintain the lock
+            instance = super().create(validated_data)
         
         if file_data:
             instance.file = file_data
