@@ -284,7 +284,7 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
         
         # Create the design asset record
         design_asset = serializer.save(
-            created_by=request.user,
+            uploaded_by=request.user,
             status='UPLOADING'
         )
         
