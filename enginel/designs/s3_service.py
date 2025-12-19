@@ -68,12 +68,19 @@ class S3Service:
             }
         )
         
-        self.client = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            config=self.config
-        )
+        # Prepare client kwargs
+        client_kwargs = {
+            'aws_access_key_id': settings.AWS_ACCESS_KEY_ID,
+            'aws_secret_access_key': settings.AWS_SECRET_ACCESS_KEY,
+            'config': self.config,
+        }
+        
+        # Add endpoint_url for Cloudflare R2 or other S3-compatible services
+        if hasattr(settings, 'AWS_S3_ENDPOINT_URL') and settings.AWS_S3_ENDPOINT_URL:
+            client_kwargs['endpoint_url'] = settings.AWS_S3_ENDPOINT_URL
+            logger.info(f"Using custom S3 endpoint: {settings.AWS_S3_ENDPOINT_URL}")
+        
+        self.client = boto3.client('s3', **client_kwargs)
         
         self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
         
