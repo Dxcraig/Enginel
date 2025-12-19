@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'rest_framework.authtoken',
     'django_filters',
     'corsheaders',
+    'storages',  # django-storages for S3/R2 support
     'designs',
     'treebeard',
 ]

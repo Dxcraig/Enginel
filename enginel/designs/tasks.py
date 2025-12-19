@@ -68,7 +68,8 @@ def process_design_asset(self, design_asset_id):
             started_at=timezone.now()
         )
         
-        file_hash = calculate_file_hash.delay(design_asset_id).get()
+        # Step 1: Calculate file hash (run inline, quick operation)
+        file_hash = calculate_file_hash(design_asset_id)
         design_asset.file_hash = file_hash
         design_asset.save()
         
@@ -77,7 +78,7 @@ def process_design_asset(self, design_asset_id):
         hash_job.completed_at = timezone.now()
         hash_job.save()
         
-        # Step 2: Extract geometry metadata
+        # Step 2: Extract geometry metadata (run inline)
         TaskProgressTracker.update_progress(task_id, 2, 5, 'Extracting geometry metadata...')
         metadata_job = AnalysisJob.objects.create(
             design_asset=design_asset,
@@ -86,7 +87,7 @@ def process_design_asset(self, design_asset_id):
             started_at=timezone.now()
         )
         
-        metadata = extract_geometry_metadata.delay(design_asset_id).get()
+        metadata = extract_geometry_metadata(design_asset_id)
         design_asset.metadata = metadata
         design_asset.save()
         
@@ -95,7 +96,7 @@ def process_design_asset(self, design_asset_id):
         metadata_job.completed_at = timezone.now()
         metadata_job.save()
         
-        # Step 3: Run design rule checks
+        # Step 3: Run design rule checks (run inline)
         TaskProgressTracker.update_progress(task_id, 3, 5, 'Running design rule checks...')
         validation_job = AnalysisJob.objects.create(
             design_asset=design_asset,
@@ -104,7 +105,7 @@ def process_design_asset(self, design_asset_id):
             started_at=timezone.now()
         )
         
-        validation_result = run_design_rule_checks.delay(design_asset_id).get()
+        validation_result = run_design_rule_checks(design_asset_id)
         design_asset.is_valid_geometry = validation_result['is_valid']
         design_asset.validation_report = validation_result
         design_asset.save()
@@ -117,14 +118,14 @@ def process_design_asset(self, design_asset_id):
         # Step 4: Extract BOM (if assembly file)
         TaskProgressTracker.update_progress(task_id, 4, 5, 'Extracting BOM structure...')
         try:
-            bom_result = extract_bom_from_assembly.delay(design_asset_id).get(timeout=120)
+            bom_result = extract_bom_from_assembly(design_asset_id)
             logger.info(f"BOM extraction result: {bom_result.get('bom_nodes_created', 0)} nodes created")
         except Exception as bom_error:
             logger.warning(f"BOM extraction failed (non-critical): {bom_error}")
         
         # Step 5: Normalize units
         try:
-            unit_result = normalize_units.delay(design_asset_id).get(timeout=30)
+            unit_result = normalize_units(design_asset_id)
             logger.info(f"Unit normalization: {unit_result.get('original_unit', 'N/A')} → {unit_result.get('target_unit', 'N/A')}")
         except Exception as unit_error:
             logger.warning(f"Unit normalization failed (non-critical): {unit_error}")
