@@ -367,12 +367,13 @@ def extract_geometry_metadata(design_asset_id):
 
 
 @shared_task
-def generate_web_preview(design_asset_id):
+def generate_web_preview(design_asset_id, processor=None):
     """
     Generate web-friendly preview file (STL) from STEP/IGES for Three.js viewing.
     
     Args:
         design_asset_id: UUID of the DesignAsset
+        processor: Optional GeometryProcessor instance to reuse (performance optimization)
     
     Returns:
         dict: Preview generation result with S3 key
@@ -397,19 +398,24 @@ def generate_web_preview(design_asset_id):
         # Get file path (download from S3 if needed)
         temp_input_path = None
         temp_output_path = None
-        try:
-            file_path = design_asset.file.path
-        except (AttributeError, NotImplementedError):
-            # For S3, download to temp file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
-                with design_asset.file.open('rb') as f:
-                    tmp_file.write(f.read())
-                file_path = tmp_file.name
-                temp_input_path = tmp_file.name
-                logger.info(f"Downloaded S3 file to temp path: {file_path}")
         
-        # Generate STL preview
-        processor = GeometryProcessor(file_path)
+        # Reuse existing processor or create new one
+        if processor:
+            logger.info("Reusing existing GeometryProcessor instance for preview generation")
+        else:
+            try:
+                file_path = design_asset.file.path
+            except (AttributeError, NotImplementedError):
+                # For S3, download to temp file
+                with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
+                    with design_asset.file.open('rb') as f:
+                        tmp_file.write(f.read())
+                    file_path = tmp_file.name
+                    temp_input_path = tmp_file.name
+                    logger.info(f"Downloaded S3 file to temp path: {file_path}")
+            
+            # Generate STL preview
+            processor = GeometryProcessor(file_path)
         
         # Create temp file for STL output
         stl_filename = f"{design_asset.id}.stl"
