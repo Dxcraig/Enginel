@@ -262,20 +262,32 @@ def extract_geometry_metadata(design_asset_id):
             return {'error': 'No file available for processing'}
         
         # Get file path (works with both local storage and S3)
-        if hasattr(design_asset.file, 'path'):
+        temp_file_path = None
+        try:
             file_path = design_asset.file.path
-        else:
+        except (AttributeError, NotImplementedError):
             # For S3, download to temp file
             import tempfile
             with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
                 with design_asset.file.open('rb') as f:
                     tmp_file.write(f.read())
                 file_path = tmp_file.name
+                temp_file_path = tmp_file.name  # Track for cleanup
+                logger.info(f"Downloaded S3 file to temp path: {file_path}")
         
         # Process with GeometryProcessor
         processor = GeometryProcessor(file_path)
         mass_props = processor.extract_mass_properties()
         topology = processor.extract_topology_info()
+        
+        # Clean up temp file if it was created
+        if temp_file_path:
+            import os
+            try:
+                os.unlink(temp_file_path)
+                logger.info(f"Cleaned up temp file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
         
         metadata = {
             'volume_mm3': mass_props['volume'],

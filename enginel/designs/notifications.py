@@ -388,14 +388,18 @@ The Enginel Team
         
         user = job.design_asset.uploaded_by
         subject = f"Processing complete: {job.job_type}"
+        
+        # Calculate duration if available
+        duration = job.get_duration()
+        duration_text = f"\nDuration: {duration:.1f} seconds" if duration else ""
+        
         message = f"""
 Hello {user.first_name or user.username},
 
 Your background processing job has completed successfully:
 
 Job Type: {job.job_type}
-Design: {job.design_asset.filename}
-Duration: {job.duration_seconds} seconds
+Design: {job.design_asset.filename}{duration_text}
 
 The results are now available in your design dashboard.
 
