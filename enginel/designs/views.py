@@ -3,6 +3,8 @@ API Views for Enginel - Engineering Intelligence Kernel.
 
 Provides RESTful endpoints for design asset management.
 """
+import logging
+
 from rest_framework import viewsets, status, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +12,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from django.db.models import Count, Max, Q
 from django_filters.rest_framework import DjangoFilterBackend
+
+logger = logging.getLogger(__name__)
 
 from .mixins import CachedViewSetMixin, LongtermCachedMixin, ShortCachedMixin
 
@@ -364,9 +368,10 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
         # Link the uploaded S3 file to the FileField
         if settings.USE_S3 and design_asset.s3_key:
             # Set the file field to point to the S3 key
-            # Django's FileField will use the DEFAULT_FILE_STORAGE (S3Boto3Storage)
+            # Django's FileField will use the storage backend from get_file_storage()
             design_asset.file.name = design_asset.s3_key
             design_asset.save(update_fields=['file'])
+            logger.info(f"Linked file to S3: {design_asset.s3_key}, storage: {design_asset.file.storage.__class__.__name__}")
         
         # Queue Celery task for processing
         task = process_design_asset.delay(str(design_asset.id))

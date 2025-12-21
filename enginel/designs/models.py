@@ -371,7 +371,17 @@ class DesignAsset(models.Model):
         ext = os.path.splitext(filename)[1].lower()
         return f'designs/{instance.id}/{instance.id}{ext}'
     
+    def get_file_storage():
+        """Get the appropriate storage backend based on settings."""
+        from django.conf import settings
+        if settings.USE_S3:
+            from storages.backends.s3boto3 import S3Boto3Storage
+            return S3Boto3Storage()
+        from django.core.files.storage import FileSystemStorage
+        return FileSystemStorage()
+    
     file = models.FileField(
+        storage=get_file_storage,
         upload_to=upload_to_path,
         null=True,
         blank=True,
