@@ -491,18 +491,30 @@ def run_design_rule_checks(design_asset_id):
             return {'is_valid': False, 'errors': {'file': 'No file available for validation'}}
         
         # Get file path (handle both local and S3 storage)
-        if hasattr(design_asset.file, 'path'):
+        temp_file_path = None
+        try:
             file_path = design_asset.file.path
-        else:
+        except (AttributeError, NotImplementedError):
+            # For S3, download to temp file
             import tempfile
             with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
                 with design_asset.file.open('rb') as f:
                     tmp_file.write(f.read())
                 file_path = tmp_file.name
+                temp_file_path = tmp_file.name
+                logger.info(f"Downloaded S3 file to temp path: {file_path}")
         
         # Run validation with GeometryProcessor
         processor = GeometryProcessor(file_path)
         validation = processor.run_design_rule_checks()
+        
+        # Clean up temp file if it was created
+        if temp_file_path:
+            try:
+                os.unlink(temp_file_path)
+                logger.info(f"Cleaned up temp file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
         
         # Convert to expected format
         validation_result = {
@@ -571,18 +583,30 @@ def extract_bom_from_assembly(design_asset_id):
             return {'error': 'No file available'}
         
         # Get file path (handle both local and S3 storage)
-        if hasattr(design_asset.file, 'path'):
+        temp_file_path = None
+        try:
             file_path = design_asset.file.path
-        else:
+        except (AttributeError, NotImplementedError):
+            # For S3, download to temp file
             import tempfile
             with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
                 with design_asset.file.open('rb') as f:
                     tmp_file.write(f.read())
                 file_path = tmp_file.name
+                temp_file_path = tmp_file.name
+                logger.info(f"Downloaded S3 file to temp path: {file_path}")
         
         # Extract BOM using GeometryProcessor
         processor = GeometryProcessor(file_path)
         components = processor.extract_bom_structure()
+        
+        # Clean up temp file if it was created
+        if temp_file_path:
+            try:
+                os.unlink(temp_file_path)
+                logger.info(f"Cleaned up temp file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
         
         # Clear existing BOM nodes for this design
         AssemblyNode.objects.filter(design_asset=design_asset).delete()

@@ -513,8 +513,29 @@ def get_cached_geometry_metadata(design_asset_id: str) -> Dict[str, Any]:
         
         # Otherwise recompute (should rarely happen)
         if design.file:
-            processor = GeometryProcessor(design.file.path)
+            # Get file path (handle both local and S3 storage)
+            temp_file_path = None
+            try:
+                file_path = design.file.path
+            except (AttributeError, NotImplementedError):
+                # For S3, download to temp file
+                import tempfile
+                with tempfile.NamedTemporaryFile(delete=False, suffix=design.filename) as tmp_file:
+                    with design.file.open('rb') as f:
+                        tmp_file.write(f.read())
+                    file_path = tmp_file.name
+                    temp_file_path = tmp_file.name
+            
+            processor = GeometryProcessor(file_path)
             metadata = processor.process_all()
+            
+            # Clean up temp file if it was created
+            if temp_file_path:
+                try:
+                    import os
+                    os.unlink(temp_file_path)
+                except Exception:
+                    pass
             
             # Update the model
             design.metadata = metadata
