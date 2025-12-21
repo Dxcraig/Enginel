@@ -409,8 +409,8 @@ def generate_web_preview(design_asset_id):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.stl') as tmp_stl:
             temp_output_path = tmp_stl.name
         
-        # Export to STL
-        processor.export_to_stl(temp_output_path, linear_deflection=0.1, angular_deflection=0.1)
+        # Export to STL with coarser mesh for web preview (faster generation)
+        processor.export_to_stl(temp_output_path, linear_deflection=0.5, angular_deflection=0.5)
         
         # Upload STL to storage
         with open(temp_output_path, 'rb') as stl_file:

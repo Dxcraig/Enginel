@@ -132,30 +132,40 @@ class GeometryProcessor:
         """
         try:
             with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read(10000)  # Read first 10KB where header is located
+                content = f.read(50000).upper()  # Read first 50KB, case-insensitive
                 
             # STEP files contain unit info in UNCERTAINTY_MEASURE_WITH_UNIT or similar entities
-            # Common patterns:
+            # Common patterns (case-insensitive):
             # #XX = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
             # #XX = ( NAMED_UNIT(*) SI_UNIT($,.METRE.) LENGTH_UNIT() );
+            # #XX = UNCERTAINTY_MEASURE_WITH_UNIT(...LENGTH_MEASURE...METRE...)
             
-            unit_mapping = {
-                '.MILLI.,.METRE.': 'mm',
-                'MILLI.,.METRE': 'mm',
-                '.METRE.': 'm',
-                'METRE': 'm',
-                '.CENTI.,.METRE.': 'cm',
-                'CENTI.,.METRE': 'cm',
-                '.INCH.': 'in',
-                'INCH': 'in',
-                '.MICRO.,.METRE.': 'um',
-                'MICRO.,.METRE': 'um',
-            }
+            # Search patterns with priority (most specific first)
+            unit_patterns = [
+                ('MILLI', 'METRE', 'mm'),
+                ('CENTI', 'METRE', 'cm'),
+                ('MICRO', 'METRE', 'um'),
+                ('KILO', 'METRE', 'km'),
+                ('INCH', None, 'in'),
+                ('FOOT', None, 'ft'),
+                ('METRE', None, 'm'),  # Check last to avoid matching MILLIMETRE
+            ]
             
-            for pattern, unit in unit_mapping.items():
-                if pattern in content:
-                    logger.info(f"Detected unit from STEP file: {unit}")
-                    return unit
+            for prefix, suffix, unit in unit_patterns:
+                if suffix:
+                    # Look for compound patterns like MILLI + METRE
+                    if prefix in content and suffix in content:
+                        # Make sure they appear close together (within 100 chars)
+                        prefix_pos = content.find(prefix)
+                        suffix_pos = content.find(suffix, prefix_pos)
+                        if suffix_pos - prefix_pos < 100:
+                            logger.info(f"Detected unit from STEP file: {unit} (pattern: {prefix}+{suffix})")
+                            return unit
+                else:
+                    # Single word patterns like INCH
+                    if prefix in content:
+                        logger.info(f"Detected unit from STEP file: {unit} (pattern: {prefix})")
+                        return unit
             
             # Default to millimeters if not found
             logger.warning("Could not detect units from STEP file, defaulting to mm")
@@ -212,8 +222,11 @@ class GeometryProcessor:
         try:
             solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
             
+            # Extract the wrapped OCP shape for direct OCP API calls
+            ocp_shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
+            
             # Run BRep analyzer
-            analyzer = BRepCheck_Analyzer(solid)
+            analyzer = BRepCheck_Analyzer(ocp_shape)
             is_valid = analyzer.IsValid()
             
             issues = []
@@ -221,7 +234,7 @@ class GeometryProcessor:
             # Check for manifold geometry
             try:
                 from OCP.BRepClass3d import BRepClass3d_SolidClassifier
-                classifier = BRepClass3d_SolidClassifier(solid)
+                classifier = BRepClass3d_SolidClassifier(ocp_shape)
                 is_manifold = True
             except Exception:
                 is_manifold = False
@@ -235,7 +248,7 @@ class GeometryProcessor:
             try:
                 from OCP.BRepBuilderAPI import BRepBuilderAPI_Sewing
                 sewing = BRepBuilderAPI_Sewing()
-                sewing.Add(solid)
+                sewing.Add(ocp_shape)
                 sewing.Perform()
                 is_closed = sewing.SewedShape().Closed()
             except Exception:
@@ -296,6 +309,9 @@ class GeometryProcessor:
         try:
             solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
             
+            # Extract the wrapped OCP shape for direct OCP API calls
+            ocp_shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
+            
             from OCP.TopAbs import TopAbs_SOLID
             from OCP.TopExp import TopExp_Explorer
             from OCP.Bnd import Bnd_Box
@@ -307,7 +323,7 @@ class GeometryProcessor:
             component_names = self._extract_step_component_names()
             
             # Explore all solids in the assembly
-            explorer = TopExp_Explorer(solid, TopAbs_SOLID)
+            explorer = TopExp_Explorer(ocp_shape, TopAbs_SOLID)
             index = 0
             
             while explorer.More():
