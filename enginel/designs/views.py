@@ -361,6 +361,13 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Link the uploaded S3 file to the FileField
+        if settings.USE_S3 and design_asset.s3_key:
+            # Set the file field to point to the S3 key
+            # Django's FileField will use the DEFAULT_FILE_STORAGE (S3Boto3Storage)
+            design_asset.file.name = design_asset.s3_key
+            design_asset.save(update_fields=['file'])
+        
         # Queue Celery task for processing
         task = process_design_asset.delay(str(design_asset.id))
         
