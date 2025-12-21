@@ -74,14 +74,17 @@ class GeometryProcessor:
             # Get the solid from the shape
             solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
             
+            # Extract the wrapped OCP shape for direct OCP API calls
+            ocp_shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
+            
             # Calculate volume
             volume_props = GProp_GProps()
-            BRepGProp.VolumeProperties_s(solid, volume_props, OnlyClosed=True)
+            BRepGProp.VolumeProperties_s(ocp_shape, volume_props, OnlyClosed=True)
             volume = volume_props.Mass()
             
             # Calculate surface area
             surface_props = GProp_GProps()
-            BRepGProp.SurfaceProperties_s(solid, surface_props, OnlyClosed=True)
+            BRepGProp.SurfaceProperties_s(ocp_shape, surface_props, OnlyClosed=True)
             surface_area = surface_props.Mass()
             
             # Get center of mass
