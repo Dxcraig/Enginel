@@ -196,6 +196,8 @@ def calculate_file_hash(design_asset_id):
             return None
         
         logger.info(f"Calculating hash for: {design_asset.filename}")
+        logger.info(f"Storage backend: {design_asset.file.storage.__class__.__name__}")
+        logger.info(f"File path: {design_asset.file.name}")
         
         hasher = hashlib.sha256()
         
