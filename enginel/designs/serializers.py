@@ -160,6 +160,14 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
             'file_hash',
             'file_size',
             'status',
+            'is_valid_geometry',
+            'validation_report',
+            'metadata',
+            'created_at',
+            'updated_at',
+            'processed_at',
+            'file_url',
+        ]
     
     def get_file_url(self, obj):
         """Generate pre-signed download URL if file exists."""
@@ -185,13 +193,6 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
         
         # Fallback to regular URL for local storage
         return obj.file.url if obj.file else None
-            'is_valid_geometry',
-            'validation_report',
-            'metadata',
-            'created_at',
-            'updated_at',
-            'processed_at',
-        ]
 
 
 class DesignAssetCreateSerializer(serializers.ModelSerializer):
