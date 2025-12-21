@@ -301,7 +301,6 @@ def extract_geometry_metadata(design_asset_id):
         
         # Clean up temp file if it was created
         if temp_file_path:
-            import os
             try:
                 os.unlink(temp_file_path)
                 logger.info(f"Cleaned up temp file: {temp_file_path}")
