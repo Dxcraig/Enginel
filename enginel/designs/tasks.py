@@ -12,6 +12,7 @@ Integrated with task monitoring for progress tracking and metrics.
 """
 import hashlib
 import logging
+import os
 import time
 from celery import shared_task
 from django.core.files.storage import default_storage
