@@ -182,7 +182,7 @@ class DesignAssetAdmin(admin.ModelAdmin):
             'fields': ('series', 'version_number', 'revision')
         }),
         ('File Information', {
-            'fields': ('filename', 's3_key', 'file_size', 'file_hash', 'units')
+            'fields': ('filename', 's3_key', 'file_size', 'file_hash')
         }),
         ('Classification & Status', {
             'fields': ('classification', 'status', 'is_valid_geometry')
