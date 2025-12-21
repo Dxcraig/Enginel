@@ -89,6 +89,11 @@ def process_design_asset(self, design_asset_id):
         )
         
         metadata = extract_geometry_metadata(design_asset_id)
+        
+        # Extract processor instance for reuse in preview generation
+        processor_instance = metadata.pop('_processor_instance', None)
+        temp_file_path = metadata.pop('_temp_file_path', None)
+        
         design_asset.metadata = metadata
         design_asset.save()
         
@@ -102,10 +107,18 @@ def process_design_asset(self, design_asset_id):
         if file_ext in ['.step', '.stp', '.iges', '.igs']:
             TaskProgressTracker.update_progress(task_id, 2.5, 5, 'Generating web preview...')
             try:
-                generate_web_preview(design_asset_id)
+                generate_web_preview(design_asset_id, processor=processor_instance)
                 logger.info(f"Web preview generated for {design_asset.filename}")
             except Exception as preview_error:
                 logger.warning(f"Preview generation failed (non-critical): {preview_error}")
+        
+        # Clean up temp file after all processing
+        if temp_file_path:
+            try:
+                os.unlink(temp_file_path)
+                logger.info(f"Cleaned up temp file: {temp_file_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
         
         # Step 3: Run design rule checks (run inline)
         TaskProgressTracker.update_progress(task_id, 3, 5, 'Running design rule checks...')
@@ -314,14 +327,6 @@ def extract_geometry_metadata(design_asset_id):
         mass_props = processor.extract_mass_properties()
         topology = processor.extract_topology_info()
         
-        # Clean up temp file if it was created
-        if temp_file_path:
-            try:
-                os.unlink(temp_file_path)
-                logger.info(f"Cleaned up temp file: {temp_file_path}")
-            except Exception as cleanup_error:
-                logger.warning(f"Failed to cleanup temp file {temp_file_path}: {cleanup_error}")
-        
         metadata = {
             'volume_mm3': mass_props['volume'],
             'surface_area_mm2': mass_props['surface_area'],
@@ -348,7 +353,9 @@ def extract_geometry_metadata(design_asset_id):
                 'in': 'Inches',
                 'ft': 'Feet',
                 'um': 'Micrometers',
-            }.get(detected_units, 'Millimeters')
+            }.get(detected_units, 'Millimeters'),
+            '_processor_instance': processor,  # Store for reuse
+            '_temp_file_path': temp_file_path  # Store for cleanup
         }
         
         logger.info(f"Metadata extracted: volume={metadata['volume_mm3']:.2f} mm³")
@@ -409,8 +416,8 @@ def generate_web_preview(design_asset_id):
         with tempfile.NamedTemporaryFile(delete=False, suffix='.stl') as tmp_stl:
             temp_output_path = tmp_stl.name
         
-        # Export to STL with coarser mesh for web preview (faster generation)
-        processor.export_to_stl(temp_output_path, linear_deflection=0.5, angular_deflection=0.5)
+        # Export to STL with coarse mesh for web preview (fast generation, 1.0 = ~2-3 seconds)
+        processor.export_to_stl(temp_output_path, linear_deflection=1.0, angular_deflection=1.0)
         
         # Upload STL to storage
         with open(temp_output_path, 'rb') as stl_file:
