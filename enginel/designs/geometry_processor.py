@@ -76,12 +76,12 @@ class GeometryProcessor:
             
             # Calculate volume
             volume_props = GProp_GProps()
-            BRepGProp.VolumeProperties_s(solid, volume_props)
+            BRepGProp.VolumeProperties_s(solid, volume_props, OnlyClosed=True)
             volume = volume_props.Mass()
             
             # Calculate surface area
             surface_props = GProp_GProps()
-            BRepGProp.SurfaceProperties_s(solid, surface_props)
+            BRepGProp.SurfaceProperties_s(solid, surface_props, OnlyClosed=True)
             surface_area = surface_props.Mass()
             
             # Get center of mass

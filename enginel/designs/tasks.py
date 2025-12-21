@@ -240,6 +240,24 @@ def extract_geometry_metadata(design_asset_id):
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Extracting geometry metadata for: {design_asset.filename}")
         
+        # Check file format - only STEP/IGES supported for geometry extraction
+        file_ext = os.path.splitext(design_asset.filename)[1].lower()
+        if file_ext not in ['.step', '.stp', '.iges', '.igs']:
+            logger.info(f"Skipping geometry extraction for unsupported format: {file_ext}")
+            metadata = {
+                'volume_mm3': 0.0,
+                'surface_area_mm2': 0.0,
+                'center_of_mass': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+                'bounding_box': {
+                    'min': {'x': 0.0, 'y': 0.0, 'z': 0.0},
+                    'max': {'x': 0.0, 'y': 0.0, 'z': 0.0}
+                },
+                'part_count': 1,
+                'unit': 'millimeters',
+                'note': f'Geometry extraction not available for {file_ext} files'
+            }
+            return metadata
+        
         if not GEOMETRY_AVAILABLE:
             logger.warning("CadQuery/OCP not available. Returning placeholder metadata.")
             metadata = {
