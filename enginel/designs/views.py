@@ -152,7 +152,6 @@ class DesignSeriesViewSet(CachedViewSetMixin, viewsets.ModelViewSet):
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"Series creation request - Data: {request.data}")
         logger.info(f"Series creation request - User: {request.user}")
         
         try:
@@ -255,9 +254,7 @@ class DesignAssetViewSet(CachedViewSetMixin, AuditLogMixin, viewsets.ModelViewSe
         import logging
         logger = logging.getLogger(__name__)
         
-        logger.info(f"DesignAsset creation - User: {self.request.user}")
-        logger.info(f"DesignAsset creation - Data: {self.request.data}")
-        logger.info(f"DesignAsset creation - Files: {self.request.FILES}")
+        logger.info(f"DesignAsset creation - User: {self.request.user.username}")
         
         try:
             instance = serializer.save(uploaded_by=self.request.user)

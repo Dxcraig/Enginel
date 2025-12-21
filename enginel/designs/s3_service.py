@@ -78,13 +78,12 @@ class S3Service:
         # Add endpoint_url for Cloudflare R2 or other S3-compatible services
         if hasattr(settings, 'AWS_S3_ENDPOINT_URL') and settings.AWS_S3_ENDPOINT_URL:
             client_kwargs['endpoint_url'] = settings.AWS_S3_ENDPOINT_URL
-            logger.info(f"Using custom S3 endpoint: {settings.AWS_S3_ENDPOINT_URL}")
         
         self.client = boto3.client('s3', **client_kwargs)
         
         self.bucket_name = settings.AWS_STORAGE_BUCKET_NAME
         
-        logger.info(f"S3Service initialized for bucket: {self.bucket_name}")
+        logger.info("S3Service initialized")
     
     def generate_upload_presigned_url(
         self,
