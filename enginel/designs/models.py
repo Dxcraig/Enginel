@@ -409,6 +409,22 @@ class DesignAsset(models.Model):
         help_text="SHA-256 hash for integrity verification"
     )
     
+    # Preview file for web viewing (GLB/GLTF format)
+    preview_file = models.FileField(
+        storage=get_file_storage,
+        upload_to=upload_to_path,
+        null=True,
+        blank=True,
+        max_length=512,
+        help_text="Web-optimized preview file (GLB/GLTF) for Three.js viewing"
+    )
+    preview_s3_key = models.CharField(
+        max_length=512,
+        null=True,
+        blank=True,
+        help_text="S3 key for preview file"
+    )
+    
     # Classification
     classification = models.CharField(
         max_length=20,

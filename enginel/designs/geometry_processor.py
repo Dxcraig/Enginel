@@ -486,3 +486,25 @@ def get_cached_geometry_metadata(design_asset_id: str) -> Dict[str, Any]:
             'message': str(e)
         }
 
+    def export_to_stl(self, output_path: str, linear_deflection: float = 0.1, angular_deflection: float = 0.1):
+        """
+        Export geometry to STL format for web preview.
+        
+        Args:
+            output_path: Path to save STL file
+            linear_deflection: Mesh quality (smaller = finer mesh)
+            angular_deflection: Mesh quality for curved surfaces
+        """
+        try:
+            import cadquery as cq
+            
+            # Get the shape
+            solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
+            
+            # Export to STL
+            cq.exporters.export(solid, output_path, tolerance=linear_deflection, angularTolerance=angular_deflection)
+            logger.info(f"Exported STL to: {output_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to export STL: {e}")
+            raise

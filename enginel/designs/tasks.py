@@ -97,6 +97,16 @@ def process_design_asset(self, design_asset_id):
         metadata_job.completed_at = timezone.now()
         metadata_job.save()
         
+        # Step 2.5: Generate web preview (STL) for STEP/IGES files
+        file_ext = os.path.splitext(design_asset.filename)[1].lower()
+        if file_ext in ['.step', '.stp', '.iges', '.igs']:
+            TaskProgressTracker.update_progress(task_id, 2.5, 5, 'Generating web preview...')
+            try:
+                generate_web_preview(design_asset_id)
+                logger.info(f"Web preview generated for {design_asset.filename}")
+            except Exception as preview_error:
+                logger.warning(f"Preview generation failed (non-critical): {preview_error}")
+        
         # Step 3: Run design rule checks (run inline)
         TaskProgressTracker.update_progress(task_id, 3, 5, 'Running design rule checks...')
         validation_job = AnalysisJob.objects.create(
@@ -333,6 +343,101 @@ def extract_geometry_metadata(design_asset_id):
         
     except Exception as exc:
         logger.error(f"Error extracting metadata: {exc}")
+        raise
+
+
+@shared_task
+def generate_web_preview(design_asset_id):
+    """
+    Generate web-friendly preview file (STL) from STEP/IGES for Three.js viewing.
+    
+    Args:
+        design_asset_id: UUID of the DesignAsset
+    
+    Returns:
+        dict: Preview generation result with S3 key
+    """
+    try:
+        from django.core.files.base import ContentFile
+        from django.conf import settings
+        import tempfile
+        
+        design_asset = DesignAsset.objects.get(id=design_asset_id)
+        logger.info(f"Generating web preview for: {design_asset.filename}")
+        
+        if not design_asset.file:
+            logger.warning(f"No file attached to {design_asset_id}")
+            return {'status': 'no_file'}
+        
+        # Check if already has preview
+        if design_asset.preview_file:
+            logger.info(f"Preview already exists: {design_asset.preview_file.name}")
+            return {'status': 'exists', 'preview_key': design_asset.preview_file.name}
+        
+        # Get file path (download from S3 if needed)
+        temp_input_path = None
+        temp_output_path = None
+        try:
+            file_path = design_asset.file.path
+        except (AttributeError, NotImplementedError):
+            # For S3, download to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=design_asset.filename) as tmp_file:
+                with design_asset.file.open('rb') as f:
+                    tmp_file.write(f.read())
+                file_path = tmp_file.name
+                temp_input_path = tmp_file.name
+                logger.info(f"Downloaded S3 file to temp path: {file_path}")
+        
+        # Generate STL preview
+        processor = GeometryProcessor(file_path)
+        
+        # Create temp file for STL output
+        stl_filename = f"{design_asset.id}.stl"
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.stl') as tmp_stl:
+            temp_output_path = tmp_stl.name
+        
+        # Export to STL
+        processor.export_to_stl(temp_output_path, linear_deflection=0.1, angular_deflection=0.1)
+        
+        # Upload STL to storage
+        with open(temp_output_path, 'rb') as stl_file:
+            stl_content = stl_file.read()
+            
+            # Save to preview_file field
+            design_asset.preview_file.save(
+                stl_filename,
+                ContentFile(stl_content),
+                save=False
+            )
+            
+            # Set S3 key
+            if settings.USE_S3:
+                design_asset.preview_s3_key = f"designs/{design_asset.id}/{stl_filename}"
+            
+            design_asset.save(update_fields=['preview_file', 'preview_s3_key'])
+        
+        logger.info(f"Preview generated and uploaded: {design_asset.preview_file.name}")
+        
+        # Cleanup temp files
+        if temp_input_path:
+            try:
+                os.unlink(temp_input_path)
+            except Exception:
+                pass
+        if temp_output_path:
+            try:
+                os.unlink(temp_output_path)
+            except Exception:
+                pass
+        
+        return {
+            'status': 'success',
+            'preview_key': design_asset.preview_file.name,
+            'preview_s3_key': design_asset.preview_s3_key
+        }
+        
+    except Exception as exc:
+        logger.error(f"Error generating preview: {exc}")
         raise
 
 

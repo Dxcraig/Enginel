@@ -128,6 +128,7 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
     series = DesignSeriesSerializer(read_only=True)
     uploaded_by = CustomUserSerializer(read_only=True)
     file_url = serializers.SerializerMethodField()
+    preview_url = serializers.SerializerMethodField()
     
     class Meta:
         model = DesignAsset
@@ -137,11 +138,13 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
             'version_number',
             'filename',
             'file_url',
+            'preview_url',
             'revision',
             'description',
             'classification',
             'status',
             's3_key',
+            'preview_s3_key',
             'file_hash',
             'file_size',
             'units',
@@ -157,6 +160,7 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id',
             's3_key',
+            'preview_s3_key',
             'file_hash',
             'file_size',
             'status',
@@ -167,6 +171,7 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
             'updated_at',
             'processed_at',
             'file_url',
+            'preview_url',
         ]
     
     def get_file_url(self, obj):
@@ -193,6 +198,31 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
         
         # Fallback to regular URL for local storage
         return obj.file.url if obj.file else None
+    
+    def get_preview_url(self, obj):
+        """Generate pre-signed URL for preview file (STL for web viewing)."""
+        from django.conf import settings
+        
+        if not obj.preview_file:
+            return None
+        
+        # If using S3, generate pre-signed URL
+        if settings.USE_S3 and obj.preview_s3_key:
+            try:
+                from designs.s3_service import get_s3_service
+                s3_service = get_s3_service()
+                return s3_service.generate_download_presigned_url(
+                    obj.preview_s3_key,
+                    expiration=3600  # 1 hour
+                )
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to generate preview pre-signed URL: {e}")
+                return None
+        
+        # Fallback to regular URL for local storage
+        return obj.preview_file.url if obj.preview_file else None
 
 
 class DesignAssetCreateSerializer(serializers.ModelSerializer):
