@@ -399,7 +399,13 @@ SECURITY_BLOCK_DURATION = int(os.getenv('SECURITY_BLOCK_DURATION', '86400'))  # 
 
 # AWS S3 Configuration
 # Django-storages backend configuration
-USE_S3 = os.getenv('USE_S3', 'False') == 'True'
+USE_S3 = os.getenv('USE_S3', 'False').lower() in ('true', '1', 'yes')
+
+# Debug logging for S3 configuration
+if DEBUG:
+    import sys
+    print(f"[DEBUG] USE_S3 env var: {os.getenv('USE_S3')}", file=sys.stderr)
+    print(f"[DEBUG] USE_S3 evaluated to: {USE_S3}", file=sys.stderr)
 
 if USE_S3:
     # AWS Credentials (also works with Cloudflare R2)
@@ -442,9 +448,19 @@ if USE_S3:
     # Media files configuration
     MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
     MEDIA_ROOT = ''  # Not used with S3
+    
+    # Debug logging for S3
+    if DEBUG:
+        import sys
+        print(f"[DEBUG] S3 Storage enabled - Bucket: {AWS_STORAGE_BUCKET_NAME}", file=sys.stderr)
+        print(f"[DEBUG] S3 Endpoint: {AWS_S3_ENDPOINT_URL}", file=sys.stderr)
 else:
     # Local file storage (development)
     DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / 'media'
+    
+    if DEBUG:
+        import sys
+        print(f"[DEBUG] Using local file storage", file=sys.stderr)
 
