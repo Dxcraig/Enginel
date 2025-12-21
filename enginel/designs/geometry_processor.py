@@ -488,7 +488,7 @@ def get_cached_geometry_metadata(design_asset_id: str) -> Dict[str, Any]:
 
     def export_to_stl(self, output_path: str, linear_deflection: float = 0.1, angular_deflection: float = 0.1):
         """
-        Export geometry to STL format for web preview.
+        Export geometry to STL format for web preview using native OpenCascade.
         
         Args:
             output_path: Path to save STL file
@@ -496,13 +496,23 @@ def get_cached_geometry_metadata(design_asset_id: str) -> Dict[str, Any]:
             angular_deflection: Mesh quality for curved surfaces
         """
         try:
-            import cadquery as cq
+            from OCP.StlAPI import StlAPI_Writer
+            from OCP.BRepMesh import BRepMesh_IncrementalMesh
             
             # Get the shape
             solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
             
-            # Export to STL
-            cq.exporters.export(solid, output_path, tolerance=linear_deflection, angularTolerance=angular_deflection)
+            # Generate mesh with specified deflection
+            mesh = BRepMesh_IncrementalMesh(solid, linear_deflection, False, angular_deflection, True)
+            mesh.Perform()
+            
+            if not mesh.IsDone():
+                raise Exception("Mesh generation failed")
+            
+            # Write to STL file
+            writer = StlAPI_Writer()
+            writer.Write(solid, output_path)
+            
             logger.info(f"Exported STL to: {output_path}")
             
         except Exception as e:
