@@ -147,7 +147,6 @@ class DesignAssetDetailSerializer(serializers.ModelSerializer):
             'preview_s3_key',
             'file_hash',
             'file_size',
-            'units',
             'is_valid_geometry',
             'validation_report',
             'metadata',
@@ -264,7 +263,6 @@ class DesignAssetCreateSerializer(serializers.ModelSerializer):
             'revision',
             'description',
             'classification',
-            'units',
             'tags',
         ]
     

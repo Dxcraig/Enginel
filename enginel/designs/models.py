@@ -465,27 +465,6 @@ class DesignAsset(models.Model):
         help_text="Detailed validation results"
     )
     
-    # Units
-    UNITS_CHOICES = [
-        ('mm', 'Millimeters'),
-        ('cm', 'Centimeters'),
-        ('m', 'Meters'),
-        ('km', 'Kilometers'),
-        ('um', 'Micrometers (Microns)'),
-        ('nm', 'Nanometers'),
-        ('in', 'Inches'),
-        ('ft', 'Feet'),
-        ('yd', 'Yards'),
-        ('mi', 'Miles'),
-    ]
-    
-    units = models.CharField(
-        max_length=2,
-        choices=UNITS_CHOICES,
-        default='mm',
-        help_text="Native units of the CAD file"
-    )
-    
     # Optional Metadata
     revision = models.CharField(
         max_length=50,

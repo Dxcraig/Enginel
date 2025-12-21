@@ -123,6 +123,48 @@ class GeometryProcessor:
             logger.error(f"Failed to extract mass properties: {str(e)}")
             raise
     
+    def extract_units(self) -> str:
+        """
+        Extract native units from STEP file header.
+        
+        Returns:
+            Unit string ('mm', 'in', 'm', etc.) or 'mm' as default
+        """
+        try:
+            with open(self.file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read(10000)  # Read first 10KB where header is located
+                
+            # STEP files contain unit info in UNCERTAINTY_MEASURE_WITH_UNIT or similar entities
+            # Common patterns:
+            # #XX = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
+            # #XX = ( NAMED_UNIT(*) SI_UNIT($,.METRE.) LENGTH_UNIT() );
+            
+            unit_mapping = {
+                '.MILLI.,.METRE.': 'mm',
+                'MILLI.,.METRE': 'mm',
+                '.METRE.': 'm',
+                'METRE': 'm',
+                '.CENTI.,.METRE.': 'cm',
+                'CENTI.,.METRE': 'cm',
+                '.INCH.': 'in',
+                'INCH': 'in',
+                '.MICRO.,.METRE.': 'um',
+                'MICRO.,.METRE': 'um',
+            }
+            
+            for pattern, unit in unit_mapping.items():
+                if pattern in content:
+                    logger.info(f"Detected unit from STEP file: {unit}")
+                    return unit
+            
+            # Default to millimeters if not found
+            logger.warning("Could not detect units from STEP file, defaulting to mm")
+            return 'mm'
+            
+        except Exception as e:
+            logger.warning(f"Failed to extract units: {str(e)}, defaulting to mm")
+            return 'mm'
+    
     def extract_topology_info(self) -> Dict[str, int]:
         """
         Extract topology counts from the geometry.
@@ -132,6 +174,9 @@ class GeometryProcessor:
         """
         try:
             solid = self.shape.val() if hasattr(self.shape, 'val') else self.shape
+            
+            # Extract the wrapped OCP shape for direct OCP API calls
+            ocp_shape = solid.wrapped if hasattr(solid, 'wrapped') else solid
             
             from OCP.TopAbs import TopAbs_SOLID, TopAbs_SHELL, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
             from OCP.TopExp import TopExp_Explorer
@@ -146,11 +191,11 @@ class GeometryProcessor:
                 return count
             
             return {
-                'solids': count_shapes(solid, TopAbs_SOLID),
-                'shells': count_shapes(solid, TopAbs_SHELL),
-                'faces': count_shapes(solid, TopAbs_FACE),
-                'edges': count_shapes(solid, TopAbs_EDGE),
-                'vertices': count_shapes(solid, TopAbs_VERTEX)
+                'solids': count_shapes(ocp_shape, TopAbs_SOLID),
+                'shells': count_shapes(ocp_shape, TopAbs_SHELL),
+                'faces': count_shapes(ocp_shape, TopAbs_FACE),
+                'edges': count_shapes(ocp_shape, TopAbs_EDGE),
+                'vertices': count_shapes(ocp_shape, TopAbs_VERTEX)
             }
         
         except Exception as e:

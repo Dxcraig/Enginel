@@ -306,6 +306,11 @@ def extract_geometry_metadata(design_asset_id):
         
         # Process with GeometryProcessor
         processor = GeometryProcessor(file_path)
+        
+        # Extract units from file
+        detected_units = processor.extract_units()
+        logger.info(f"Detected units from file: {detected_units}")
+        
         mass_props = processor.extract_mass_properties()
         topology = processor.extract_topology_info()
         
@@ -335,7 +340,15 @@ def extract_geometry_metadata(design_asset_id):
                 'dimensions': mass_props['bounding_box']['dimensions']
             },
             'topology': topology,
-            'unit': 'millimeters'
+            'unit': detected_units,
+            'unit_full_name': {
+                'mm': 'Millimeters',
+                'cm': 'Centimeters',
+                'm': 'Meters',
+                'in': 'Inches',
+                'ft': 'Feet',
+                'um': 'Micrometers',
+            }.get(detected_units, 'Millimeters')
         }
         
         logger.info(f"Metadata extracted: volume={metadata['volume_mm3']:.2f} mm³")
@@ -682,8 +695,11 @@ def normalize_units(design_asset_id, unit_override=None):
         design_asset = DesignAsset.objects.get(id=design_asset_id)
         logger.info(f"Normalizing units for: {design_asset.filename}")
         
-        # Determine original unit (priority: override > stored > auto-detect)
-        original_unit = unit_override or design_asset.units
+        # Determine original unit (priority: override > metadata > auto-detect)
+        original_unit = unit_override
+        if not original_unit:
+            # Try to get from metadata
+            original_unit = design_asset.metadata.get('unit', 'mm') if design_asset.metadata else 'mm'
         if not original_unit or original_unit == 'unknown':
             original_unit = detect_unit_from_filename(design_asset.filename)
             logger.info(f"Auto-detected unit: {original_unit}")
