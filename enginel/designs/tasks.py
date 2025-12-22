@@ -402,7 +402,10 @@ def generate_web_preview(design_asset_id, processor=None):
         # Reuse existing processor or create new one
         if processor:
             logger.info("Reusing existing GeometryProcessor instance for preview generation")
+            # Processor already exists from metadata extraction, no need to recreate
         else:
+            # No processor provided, need to create one
+            logger.info("Creating new GeometryProcessor instance for preview generation")
             try:
                 file_path = design_asset.file.path
             except (AttributeError, NotImplementedError):
@@ -414,7 +417,7 @@ def generate_web_preview(design_asset_id, processor=None):
                     temp_input_path = tmp_file.name
                     logger.info(f"Downloaded S3 file to temp path: {file_path}")
             
-            # Generate STL preview
+            # Create new GeometryProcessor instance
             processor = GeometryProcessor(file_path)
         
         # Create temp file for STL output
