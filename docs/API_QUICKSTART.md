@@ -4,7 +4,7 @@ Get started with the Enginel API in 5 minutes.
 
 ## Prerequisites
 
-- Python 3.8+ (for examples)
+- Python 3.13+ (for examples)
 - curl or HTTP client
 - Access to Enginel instance (development or production)
 
@@ -64,46 +64,9 @@ print(f"Got token: {token}")
 headers = {'Authorization': f'Token {token}'}
 ```
 
-## Step 2: Create an Organization
+## Step 2: Create a Design Series
 
-Organizations isolate data between tenants.
-
-**curl:**
-```bash
-curl -X POST http://localhost:8000/api/organizations/ \
-  -H "Authorization: Token $ENGINEL_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "My Company",
-    "slug": "my-company",
-    "description": "Engineering team",
-    "is_us_organization": true,
-    "subscription_tier": "PROFESSIONAL"
-  }'
-```
-
-**Python:**
-```python
-response = requests.post(
-    'http://localhost:8000/api/organizations/',
-    headers=headers,
-    json={
-        'name': 'My Company',
-        'slug': 'my-company',
-        'description': 'Engineering team',
-        'is_us_organization': True,
-        'subscription_tier': 'PROFESSIONAL'
-    }
-)
-
-org = response.json()
-org_id = org['id']
-print(f"Created organization: {org_id}")
-```
-
-## Step 3: Create a Design Series
-
-Design series represent part numbers (e.g., "TB-001").
+Design series are containers for part numbers and their versions.
 
 **curl:**
 ```bash
@@ -111,11 +74,9 @@ curl -X POST http://localhost:8000/api/series/ \
   -H "Authorization: Token $ENGINEL_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "organization": "YOUR_ORG_ID",
-    "part_number": "PART-001",
-    "name": "Sample Part",
-    "description": "Test component",
-    "category": "MECHANICAL"
+    "part_number": "TB-001",
+    "name": "Turbine Blade Assembly",
+    "description": "High-temperature titanium blade"
   }'
 ```
 
@@ -125,11 +86,44 @@ response = requests.post(
     'http://localhost:8000/api/series/',
     headers=headers,
     json={
-        'organization': org_id,
+        'part_number': 'TB-001',
+        'name': 'Turbine Blade Assembly',
+        'description': 'High-temperature titanium blade'
+    }
+)
+
+series = response.json()
+series_id = series['id']
+print(f"Created series: {series['part_number']} - {series['name']}")
+```
+print(f"Created organization: {org_id}")
+```
+
+## Step 2: Create a Design Series
+
+Design series represent part numbers (e.g., "TB-001").
+
+**curl:**
+```bash
+curl -X POST http://localhost:8000/api/series/ \
+  -H "Authorization: Token $ENGINEL_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "part_number": "PART-001",
+    "name": "Sample Part",
+    "description": "Test component"
+  }'
+```
+
+**Python:**
+```python
+response = requests.post(
+    'http://localhost:8000/api/series/',
+    headers=headers,
+    json={
         'part_number': 'PART-001',
         'name': 'Sample Part',
-        'description': 'Test component',
-        'category': 'MECHANICAL'
+        'description': 'Test component'
     }
 )
 
@@ -138,7 +132,7 @@ series_id = series['id']
 print(f"Created series: {series['part_number']}")
 ```
 
-## Step 4: Upload a CAD File
+## Step 3: Upload a CAD File
 
 ### Method 1: Direct Upload (Simple)
 
@@ -229,7 +223,7 @@ response = requests.post(
 print("Processing started:", response.json())
 ```
 
-## Step 5: Monitor Processing
+## Step 4: Monitor Processing
 
 After upload, files are processed asynchronously:
 
@@ -273,7 +267,7 @@ progress = response.json()
 print(f"Progress: {progress['percent']}% - {progress['status_message']}")
 ```
 
-## Step 6: Query Designs
+## Step 5: Query Designs
 
 **List all designs:**
 ```bash

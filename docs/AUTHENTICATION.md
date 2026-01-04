@@ -25,10 +25,10 @@ Enginel provides a comprehensive authentication system with multiple authenticat
 
 - ✅ **Expiring Tokens** - Access tokens expire after 24 hours (configurable)
 - ✅ **Refresh Tokens** - Get new access tokens without re-authenticating
-- ✅ **API Keys** - Long-lived tokens for automated systems
+- ✅ **API Keys** - Long-lived tokens for automated systems and CI/CD pipelines
 - ✅ **Multi-Device Sessions** - Track and manage sessions across devices
 - ✅ **Token Revocation** - Revoke compromised tokens immediately
-- ✅ **Security Controls** - IP restrictions, scope limiting, usage tracking
+- ✅ **Security Controls** - IP restrictions, scope limiting, and usage tracking
 
 ## Authentication Methods
 

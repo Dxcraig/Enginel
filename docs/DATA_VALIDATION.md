@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Enginel Data Validation System provides a comprehensive, flexible framework for validating data integrity, enforcing business rules, and maintaining data quality across the platform. The system supports custom validation rules, automatic validation on model operations, detailed validation reporting, and audit trails.
+The Enginel Data Validation System provides a comprehensive, flexible framework for validating data integrity, enforcing business rules, and maintaining data quality across the platform. The system supports custom validation rules with multiple severity levels, automatic validation on model operations, detailed validation reporting with override capabilities, and complete audit trails for compliance.
 
 ## Table of Contents
 

@@ -9,7 +9,6 @@ Complete reference documentation for the Enginel REST API.
 - [Base URL](#base-url)
 - [Common Patterns](#common-patterns)
 - [API Endpoints](#api-endpoints)
-  - [Organizations](#organizations)
   - [Users](#users)
   - [Design Series](#design-series)
   - [Design Assets](#design-assets)
@@ -36,8 +35,7 @@ Last Updated: December 16, 2025
 ### API Features
 
 - ✅ Token-based authentication
-- ✅ Multi-tenant organization isolation
-- ✅ ITAR compliance controls
+- ✅ ITAR compliance controls and access restrictions
 - ✅ Comprehensive audit logging
 - ✅ Real-time background job tracking
 - ✅ Advanced search and filtering
@@ -170,136 +168,6 @@ All timestamps are in ISO 8601 format with UTC timezone:
 
 ## API Endpoints
 
-## Organizations
-
-Manage multi-tenant organizations and memberships.
-
-### List Organizations
-
-```
-GET /api/organizations/
-```
-
-**Response:**
-```json
-{
-  "count": 2,
-  "results": [
-    {
-      "id": "123e4567-e89b-12d3-a456-426614174000",
-      "name": "Acme Engineering",
-      "slug": "acme-engineering",
-      "description": "Advanced aerospace components",
-      "is_active": true,
-      "is_us_organization": true,
-      "subscription_tier": "ENTERPRISE",
-      "max_users": 100,
-      "max_storage_gb": 1000,
-      "member_count": 45,
-      "storage_used_gb": 234.5,
-      "contact_email": "admin@acme.com",
-      "contact_phone": "+1-555-0100",
-      "created_at": "2025-01-01T00:00:00Z",
-      "updated_at": "2025-12-16T10:00:00Z"
-    }
-  ]
-}
-```
-
-**Filters:**
-- `is_active` - boolean
-- `is_us_organization` - boolean
-- `subscription_tier` - STARTER, PROFESSIONAL, ENTERPRISE
-- `search` - Search name, slug, description
-
-### Create Organization
-
-```
-POST /api/organizations/
-```
-
-**Request:**
-```json
-{
-  "name": "New Company Inc",
-  "slug": "new-company",
-  "description": "Manufacturing and design",
-  "is_us_organization": true,
-  "subscription_tier": "PROFESSIONAL",
-  "max_users": 50,
-  "max_storage_gb": 500,
-  "contact_email": "admin@newco.com",
-  "contact_phone": "+1-555-0200"
-}
-```
-
-**Response:** `201 Created` with organization object
-
-### Get Organization
-
-```
-GET /api/organizations/{id}/
-```
-
-### Update Organization
-
-```
-PUT /api/organizations/{id}/
-PATCH /api/organizations/{id}/
-```
-
-### Delete Organization
-
-```
-DELETE /api/organizations/{id}/
-```
-
-**Response:** `204 No Content`
-
-### Get Organization Members
-
-```
-GET /api/organizations/{id}/members/
-```
-
-**Response:**
-```json
-[
-  {
-    "id": 1,
-    "user": 5,
-    "username": "john.doe",
-    "email": "john@acme.com",
-    "role": "ADMIN",
-    "joined_at": "2025-01-15T10:00:00Z"
-  }
-]
-```
-
-**Roles:**
-- `OWNER` - Full control
-- `ADMIN` - Manage members and settings
-- `MEMBER` - Create and edit designs
-- `VIEWER` - Read-only access
-
-### Add Organization Member
-
-```
-POST /api/organizations/{id}/add_member/
-```
-
-**Request:**
-```json
-{
-  "user_id": 10,
-  "role": "MEMBER"
-}
-```
-
-**Permissions:** Requires OWNER or ADMIN role
-
----
-
 ## Users
 
 Manage users and their profiles.
@@ -325,14 +193,7 @@ GET /api/users/
       "security_clearance_level": "SECRET",
       "organization": "Acme Engineering",
       "phone_number": "+1-555-0100",
-      "date_joined": "2025-01-01T00:00:00Z",
-      "organizations": [
-        {
-          "organization_id": "123e4567...",
-          "organization_name": "Acme Engineering",
-          "role": "ADMIN"
-        }
-      ]
+      "date_joined": "2025-01-01T00:00:00Z"
     }
   ]
 }
@@ -341,7 +202,8 @@ GET /api/users/
 **Filters:**
 - `is_us_person` - boolean
 - `security_clearance_level` - UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP_SECRET
-- `search` - Search username, email, name
+- `is_active` - boolean
+- `search` - Search username, email, first_name, last_name, organization
 
 ### Get User
 
@@ -357,11 +219,20 @@ GET /api/users/me/
 
 Returns the authenticated user's profile.
 
+### Update Current User
+
+```
+PATCH /api/users/me/
+PUT /api/users/me/
+```
+
+Update the authenticated user's profile information.
+
 ---
 
 ## Design Series
 
-Manage part numbers and design families.
+Manage part numbers and design families. Each design series is a container for multiple versions of the same part.
 
 ### List Design Series
 
@@ -376,13 +247,11 @@ GET /api/series/
   "results": [
     {
       "id": "456e7890-e89b-12d3-a456-426614174000",
-      "organization": "123e4567-e89b-12d3-a456-426614174000",
-      "organization_name": "Acme Engineering",
       "part_number": "TB-001",
       "name": "Turbine Blade Assembly",
       "description": "High-temperature titanium blade",
-      "category": "AEROSPACE",
-      "created_by": 1,
+      "version_count": 5,
+      "latest_version_number": 5,
       "created_by_username": "john.doe",
       "created_at": "2025-06-01T00:00:00Z",
       "updated_at": "2025-12-16T10:00:00Z"
@@ -392,10 +261,10 @@ GET /api/series/
 ```
 
 **Filters:**
-- `organization` - UUID
-- `part_number` - exact match
-- `category` - text
-- `created_by` - user ID
+- `part_number` - Filter by part number (case-insensitive)
+- `created_by_username` - Filter by creator username
+- `has_versions` - boolean (series with uploaded versions)
+- `min_versions` - minimum number of versions
 - `search` - Search part_number, name, description
 
 ### Create Design Series

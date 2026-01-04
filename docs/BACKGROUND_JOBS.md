@@ -27,10 +27,10 @@ Comprehensive monitoring and tracking system for Celery background tasks.
 
 The background job monitoring system provides:
 - **Real-time task status**: Track running, pending, and completed tasks
-- **Progress tracking**: Monitor long-running operations with progress bars
-- **Metrics collection**: Analyze success rates, durations, failure patterns
-- **Failure analysis**: Debug issues with detailed error tracking
-- **Task management**: Cancel, retry, or monitor active tasks
+- **Progress tracking**: Monitor long-running operations with progress bars and percentage completion
+- **Metrics collection**: Analyze success rates, durations, and failure patterns
+- **Failure analysis**: Debug issues with detailed error tracking and stack traces
+- **Task management**: Cancel, retry, or monitor active Celery tasks
 
 ### Components
 

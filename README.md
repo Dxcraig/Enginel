@@ -76,32 +76,24 @@ REDIS_URL=redis://localhost:6379/0
 Start all services (web, database, redis, celery workers):
 
 ```bash
+docker-compose up
+```
+
+To run in detached mode:
+
+```bash
 docker-compose up -d
 ```
 
 Access the application:
 - **API Root**: http://localhost:8000/api/
 - **Admin Panel**: http://localhost:8000/admin/
-- **Login**: admin / [password you set during setup]
-
-Create a superuser (if not already done):
-
-```bash
-docker exec -it enginel_app python manage.py createsuperuser
-```
+- **API Documentation**: http://localhost:8000/api/docs/
 
 Check service status:
 
 ```bash
 docker-compose ps
-```
-
-The API will be available at `http://localhost:8000`
-
-To run in detached mode:
-
-```bash
-docker-compose up -d
 ```
 
 Stop the application:
@@ -212,7 +204,6 @@ Complete API documentation is available in the [`docs/`](docs/) folder:
 ### Feature Documentation
 
 - [Authentication](docs/AUTHENTICATION.md) - Token auth, API keys, security
-- [Multi-Tenant Organizations](docs/MULTI_TENANT.md) - Organization management
 - [Audit Logging](docs/AUDIT_LOGGING.md) - Compliance audit trails
 - [Background Jobs](docs/BACKGROUND_JOBS.md) - Async task monitoring
 - [BOM Extraction](docs/BOM_EXTRACTION.md) - Bill of Materials parsing
@@ -266,21 +257,23 @@ Enginel/
 ✅ **Completed Features:**
 - ✅ REST API with 60+ endpoints
 - ✅ Token authentication with refresh tokens and API keys
-- ✅ Multi-tenant organization management
+- ✅ ITAR compliance fields and access control
 - ✅ CAD file upload and processing (STEP/IGES)
-- ✅ Bill of Materials (BOM) extraction
-- ✅ Celery async task processing
+- ✅ Bill of Materials (BOM) extraction and hierarchy
+- ✅ Celery async task processing with Redis
 - ✅ Background job monitoring and metrics
-- ✅ Unit conversion and normalization
-- ✅ Comprehensive audit logging
-- ✅ Advanced search and filtering
-- ✅ Redis caching layer
+- ✅ Automatic unit detection and conversion
+- ✅ Comprehensive compliance audit logging
+- ✅ Advanced search, filtering, and ordering capabilities
+- ✅ Redis caching layer for performance optimization
 - ✅ Data validation system with custom rules
-- ✅ Email notification system
+- ✅ Email notification system with user preferences
 - ✅ Design review workflows
 - ✅ 3D markup/annotation system
-- ✅ Error tracking and monitoring
-- ✅ OpenAPI 3.0 specification
+- ✅ Error tracking and monitoring with comprehensive logging
+- ✅ OpenAPI 3.0 specification for API documentation
+- ✅ File preview generation (GLB/GLTF format)
+- ✅ Design version management with series tracking
 
 ## 📄 License
 

@@ -6,12 +6,12 @@ This document describes the comprehensive error handling and monitoring system i
 
 The monitoring system provides:
 
-1. **Error Tracking**: Centralized error logging with context and aggregation
+1. **Error Tracking**: Centralized error logging with context, stack traces, and error aggregation
 2. **Performance Monitoring**: Track operation duration and detect slow endpoints
-3. **Health Checks**: Component status monitoring for load balancers
-4. **Metrics Collection**: Application-level metrics for dashboards
-5. **Request Logging**: Detailed API request/response logging
-6. **Celery Task Monitoring**: Background task performance tracking
+3. **Health Checks**: Component status monitoring for load balancers and orchestration
+4. **Metrics Collection**: Application-level metrics for dashboards and alerting
+5. **Request Logging**: Detailed API request/response logging with user context
+6. **Celery Task Monitoring**: Background task performance tracking with duration and failure metrics
 
 ## Architecture
 

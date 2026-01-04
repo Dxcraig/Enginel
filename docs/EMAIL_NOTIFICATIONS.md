@@ -19,13 +19,13 @@ Comprehensive email notification system for Enginel with user preferences, rate 
 
 The email notification system provides:
 
-- **Automated notifications** for design lifecycle events
-- **User preference management** with granular controls
-- **Rate limiting** to prevent email overload
-- **Retry logic** with exponential backoff
-- **Batch processing** for digest emails
-- **Quiet hours** support
-- **Priority queuing** for urgent notifications
+- **Automated notifications** for design lifecycle events (upload, approval, review)
+- **User preference management** with granular per-notification-type controls
+- **Rate limiting** to prevent email overload (100 emails per user per hour)
+- **Retry logic** with exponential backoff (up to 3 retries)
+- **Batch processing** for digest emails (hourly, daily, weekly)
+- **Quiet hours** support to suppress notifications during off-hours
+- **Priority queuing** for urgent notifications (LOW, NORMAL, HIGH, URGENT)
 
 ## Features
 

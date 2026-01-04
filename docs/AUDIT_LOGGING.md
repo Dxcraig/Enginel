@@ -1,7 +1,7 @@
 # Enginel Audit Logging System
 
 ## Overview
-Comprehensive audit logging system for CMMC compliance, tracking all critical operations on design assets, reviews, and markups.
+Comprehensive audit logging system for CMMC and ITAR compliance, tracking all critical operations on design assets, reviews, and markups with immutable, tamper-evident logs.
 
 ## Features
 

@@ -1,15 +1,91 @@
-# Multi-Tenant Organization Support
+# Organization Support (Not Implemented)
 
-This document describes the multi-tenant organization system in Enginel, which enables complete data isolation between companies, teams, and customer organizations.
+**Note:** This documentation describes a multi-tenant organization system that is planned but not yet implemented in the current version of Enginel.
 
-## Overview
+## Current Implementation
 
-The multi-tenant system provides:
+In the current version (v1.0), Enginel uses a simpler user-based organization model:
+
+### User Organization Field
+
+Users have a simple `organization` text field that stores their company or organization name:
+
+```python
+class CustomUser(AbstractUser):
+    organization = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Company or organization name"
+    )
+```
+
+This field is:
+- A simple string value (not a foreign key)
+- Optional/blank by default
+- Used for display and filtering purposes only
+- Does not provide data isolation between organizations
+
+### User Fields
+
+The following user fields support basic organization tracking:
+
+- `username` - Unique username
+- `email` - User email address
+- `organization` - Company/organization name (text field)
+- `is_us_person` - ITAR compliance flag
+- `security_clearance_level` - Security clearance (UNCLASSIFIED, CONFIDENTIAL, SECRET, TOP_SECRET)
+- `phone_number` - Contact phone number
+
+### API Endpoints
+
+**Get Current User:**
+```http
+GET /api/users/me/
+```
+
+**Update Current User:**
+```http
+PATCH /api/users/me/
+PUT /api/users/me/
+```
+
+Example:
+```json
+{
+  "organization": "Acme Engineering",
+  "phone_number": "+1-555-0123",
+  "is_us_person": true
+}
+```
+
+## Future Plans
+
+A full multi-tenant organization system is planned for a future release, which would include:
+
+- Separate Organization model with UUID primary keys
+- Organization membership with roles (OWNER, ADMIN, MEMBER, VIEWER)
+- Complete data isolation between organizations
+- Per-organization resource quotas
+- Subscription tier management
+- Team collaboration features
+
+For now, the simple organization text field provides basic organization tracking without the complexity of full multi-tenancy.
+
+## Migration Path
+
+When the full organization system is implemented, existing data can be migrated by:
+
+1. Creating Organization records from unique organization names
+2. Converting the text field to a foreign key
+3. Assigning users to their respective organizations
+4. Setting default roles for all users
+
+This will be handled automatically during the upgrade process.
 
 1. **Complete Data Isolation**: Each organization's design data is completely isolated from other organizations
-2. **Role-Based Access Control**: Organization members have specific roles (OWNER, ADMIN, MEMBER, VIEWER, GUEST)
+2. **Role-Based Access Control (RBAC)**: Organization members have specific roles (OWNER, ADMIN, MEMBER, VIEWER, GUEST)
 3. **Resource Quotas**: Per-organization limits on users and storage
-4. **Subscription Tiers**: Different feature sets based on subscription level
+4. **Subscription Tiers**: Different feature sets based on subscription level (FREE, STARTER, PROFESSIONAL, ENTERPRISE)
 5. **Flexible Membership**: Users can belong to multiple organizations with different roles
 
 ## Architecture

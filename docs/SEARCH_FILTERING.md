@@ -7,8 +7,8 @@ This document describes the comprehensive search and filtering capabilities in E
 Enginel provides three complementary mechanisms for finding data:
 
 1. **Full-Text Search**: Quick keyword search across multiple fields using `?search=keyword`
-2. **Advanced Filtering**: Precise filters for specific fields using `django-filter`
-3. **Ordering**: Sort results by multiple fields with `?ordering=field1,-field2`
+2. **Advanced Filtering**: Precise filters for specific fields using `django-filter` with 25+ filter types
+3. **Ordering**: Sort results by multiple fields with `?ordering=field1,-field2` (ascending/descending)
 
 All endpoints support pagination with `?page=N` and `?page_size=50` (default 50 items per page).
 
@@ -65,48 +65,6 @@ This sorts by newest first, then by file size ascending.
 
 ## API Endpoints
 
-### Organizations
-
-**Endpoint**: `/api/organizations/`
-
-**Search Fields**: name, slug, description, contact_email
-
-**Filters**:
-
-| Filter | Type | Description | Example |
-|--------|------|-------------|---------|
-| `name` | String | Organization name (case-insensitive) | `?name=acme` |
-| `slug` | String | URL slug | `?slug=acme-engineering` |
-| `subscription_tier` | Choice | Tier (FREE, STARTER, PROFESSIONAL, ENTERPRISE) | `?subscription_tier=PROFESSIONAL` |
-| `is_us_organization` | Boolean | ITAR compliance | `?is_us_organization=true` |
-| `is_active` | Boolean | Active status | `?is_active=true` |
-| `min_users` | Number | Minimum member count | `?min_users=5` |
-| `max_users` | Number | Maximum member count | `?max_users=50` |
-| `min_storage` | Number | Minimum storage used (GB) | `?min_storage=10` |
-| `max_storage` | Number | Maximum storage used (GB) | `?max_storage=100` |
-| `created_after` | DateTime | Created after date | `?created_after=2025-01-01` |
-| `created_before` | DateTime | Created before date | `?created_before=2025-12-31` |
-
-**Ordering Fields**: name, created_at, subscription_tier
-
-**Examples**:
-
-```bash
-# Find all professional tier organizations
-GET /api/organizations/?subscription_tier=PROFESSIONAL
-
-# Organizations with 10-50 users
-GET /api/organizations/?min_users=10&max_users=50
-
-# Search by name
-GET /api/organizations/?search=engineering
-
-# US organizations created this year
-GET /api/organizations/?is_us_organization=true&created_after=2025-01-01
-```
-
----
-
 ### Users
 
 **Endpoint**: `/api/users/`
@@ -128,7 +86,6 @@ GET /api/organizations/?is_us_organization=true&created_after=2025-01-01
 | `is_active` | Boolean | Active account | `?is_active=true` |
 | `is_staff` | Boolean | Staff status | `?is_staff=true` |
 | `is_superuser` | Boolean | Admin status | `?is_superuser=false` |
-| `member_of_organization` | UUID | Organization membership | `?member_of_organization=<uuid>` |
 | `joined_after` | DateTime | Account created after | `?joined_after=2025-01-01` |
 | `joined_before` | DateTime | Account created before | `?joined_before=2025-12-31` |
 
@@ -139,9 +96,6 @@ GET /api/organizations/?is_us_organization=true&created_after=2025-01-01
 ```bash
 # Find ITAR-compliant users with SECRET clearance
 GET /api/users/?is_us_person=true&min_clearance=SECRET
-
-# Active users in specific organization
-GET /api/users/?is_active=true&member_of_organization=<uuid>
 
 # Search for user
 GET /api/users/?search=john.doe
@@ -173,8 +127,6 @@ GET /api/users/?joined_after=2025-12-01
 | `max_versions` | Number | Maximum version count | `?max_versions=10` |
 | `created_by` | Number | Creator user ID | `?created_by=5` |
 | `created_by_username` | String | Creator username | `?created_by_username=john` |
-| `organization` | UUID | Organization ID | `?organization=<uuid>` |
-| `organization_slug` | String | Organization slug | `?organization_slug=acme-eng` |
 | `created_after` | DateTime | Created after | `?created_after=2025-01-01` |
 | `created_before` | DateTime | Created before | `?created_before=2025-12-31` |
 | `updated_after` | DateTime | Updated after | `?updated_after=2025-01-01` |
@@ -236,7 +188,6 @@ GET /api/series/?has_versions=false
 | `uploaded_by` | Number | Uploader user ID | `?uploaded_by=5` |
 | `uploaded_by_username` | String | Uploader username | `?uploaded_by_username=john` |
 | `series_id` | UUID | Series ID | `?series_id=<uuid>` |
-| `organization` | UUID | Organization ID | `?organization=<uuid>` |
 | `uploaded_after` | DateTime | Uploaded after | `?uploaded_after=2025-01-01` |
 | `uploaded_before` | DateTime | Uploaded before | `?uploaded_before=2025-12-31` |
 | `modified_after` | DateTime | Modified after | `?modified_after=2025-01-01` |

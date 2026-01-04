@@ -1,7 +1,7 @@
 # Enginel BOM (Bill of Materials) Extraction
 
 ## Overview
-Automated BOM extraction from CAD assembly files (STEP/IGES) with hierarchical tree structure, mass properties, and component metadata.
+Automated Bill of Materials (BOM) extraction from CAD assembly files (STEP/IGES) with hierarchical tree structure using Django Treebeard, mass properties calculation, and comprehensive component metadata.
 
 ## Features
 

@@ -39,14 +39,14 @@ The caching system provides:
 
 ### Key Features
 
-✅ **Multi-tier caching** with 3 separate Redis databases  
-✅ **Automatic invalidation** via Django signals  
-✅ **Compression** (zlib) to reduce memory usage  
-✅ **Connection pooling** (50 max connections)  
-✅ **Graceful degradation** (cache failures don't break app)  
-✅ **ViewSet-level caching** for all API endpoints  
-✅ **Geometry computation caching** (1 hour TTL)  
-✅ **Cache statistics** and health monitoring
+✅ **Multi-tier caching** with 3 separate Redis databases for different TTL strategies  
+✅ **Automatic invalidation** via Django signals on model changes  
+✅ **Compression** (zlib) to reduce memory usage by ~60%  
+✅ **Connection pooling** (50 max connections) for efficient Redis usage  
+✅ **Graceful degradation** (cache failures don't break application)  
+✅ **ViewSet-level caching** for all API endpoints with query parameter awareness  
+✅ **Geometry computation caching** (1 hour TTL) for expensive operations  
+✅ **Cache statistics** and health monitoring endpoints
 
 ---
 

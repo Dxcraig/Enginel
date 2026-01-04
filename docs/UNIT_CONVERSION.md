@@ -7,9 +7,10 @@ This document describes the unit conversion system in Enginel, which ensures con
 CAD files from different sources may use different units (inches, millimeters, centimeters, etc.). The unit conversion system:
 
 1. **Auto-detects** units from filenames (e.g., `bracket_inches.step` → inches)
-2. **Normalizes** all measurements to millimeters (BASE_UNIT)
-3. **Preserves** conversion history in metadata
-4. **Provides** API endpoints for unit queries
+2. **Normalizes** all measurements to millimeters (BASE_UNIT) for consistent comparisons
+3. **Preserves** original units and conversion history in metadata
+4. **Provides** API endpoints for unit queries and conversion calculations
+5. **Supports** 10+ unit types (metric and imperial)
 
 This prevents unit confusion errors and enables accurate comparisons between designs.
 

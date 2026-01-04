@@ -24,7 +24,6 @@ Complete documentation for the Enginel Engineering Intelligence Kernel.
 - **[Data Validation](DATA_VALIDATION.md)** - Custom validation rules and data integrity checks
 
 ### Operations
-- **[Multi-Tenant Organizations](MULTI_TENANT.md)** - Organization isolation and access control
 - **[Background Jobs](BACKGROUND_JOBS.md)** - Async task processing and monitoring
 - **[Email Notifications](EMAIL_NOTIFICATIONS.md)** - User notifications and preferences
 - **[Error Handling](ERROR_HANDLING.md)** - Error tracking, monitoring, and recovery
@@ -44,7 +43,6 @@ Complete documentation for the Enginel Engineering Intelligence Kernel.
 | [Data Validation](DATA_VALIDATION.md) | Data validation framework | Custom rules, validators, integrity checks, reporting |
 | [Email Notifications](EMAIL_NOTIFICATIONS.md) | Email notification system | User preferences, notification types, delivery |
 | [Error Handling](ERROR_HANDLING.md) | Error tracking & monitoring | Error logging, performance monitoring, debugging |
-| [Multi-Tenant](MULTI_TENANT.md) | Organization management | Multi-tenancy, roles, permissions, isolation |
 | [Search & Filtering](SEARCH_FILTERING.md) | Search capabilities | Full-text search, filtering, ordering, pagination |
 | [Unit Conversion](UNIT_CONVERSION.md) | Unit handling | Auto-detection, conversion, validation |
 
@@ -59,8 +57,8 @@ Complete documentation for the Enginel Engineering Intelligence Kernel.
 
 ### Base URL
 ```
-http://localhost:8000/api  (development)
-https://api.enginel.example.com/api  (production)
+http://localhost:8000/api/  (development)
+https://api.enginel.example.com/api/  (production)
 ```
 
 ### Authentication
@@ -80,7 +78,6 @@ curl -H "Authorization: Token <your-token>" \
 | Category | Endpoint | Description |
 |----------|----------|-------------|
 | Auth | `/api/auth/login/` | User authentication |
-| Organizations | `/api/organizations/` | Multi-tenant organizations |
 | Users | `/api/users/` | User management |
 | Design Series | `/api/series/` | Part number families |
 | Designs | `/api/designs/` | CAD file uploads and metadata |
@@ -108,7 +105,6 @@ headers = {'Authorization': f'Token {token}'}
 series = requests.post('http://localhost:8000/api/series/',
     headers=headers,
     json={
-        'organization': 'org-uuid',
         'part_number': 'PART-001',
         'name': 'My Part'
     }).json()
@@ -267,23 +263,34 @@ X-RateLimit-Reset: 1640000000
 
 ## Support
 
-- **Issues**: Report bugs and request features via GitHub Issues
-- **Email**: support@enginel.example.com
-- **Documentation**: This docs folder
-- **API Status**: http://localhost:8000/api/health/
+- **Documentation**: Complete guides in the [docs/](.) folder
+- **API Quick Start**: [Get started in 5 minutes](API_QUICKSTART.md)
+- **API Reference**: [Complete endpoint documentation](API_REFERENCE.md)
+- **OpenAPI Spec**: [Machine-readable specification](openapi.yaml)
+- **Issues**: Report bugs and request features via your issue tracking system
 
 ## Version History
 
 - **v1.0** (Current) - Initial release with full feature set
   - REST API with 60+ endpoints
-  - Token authentication with refresh tokens
-  - Multi-tenant organizations
-  - CAD file processing and BOM extraction
-  - Background job monitoring
-  - Email notifications
-  - Comprehensive audit logging
-  - Advanced search and filtering
-  - Redis caching layer
+  - Token authentication with refresh tokens and API keys
+  - ITAR compliance fields and access control
+  - CAD file upload and processing (STEP/IGES)
+  - Bill of Materials (BOM) extraction and hierarchy
+  - Celery async task processing with Redis
+  - Background job monitoring and metrics
+  - Automatic unit detection and conversion
+  - Comprehensive compliance audit logging
+  - Advanced search, filtering, and ordering capabilities
+  - Redis caching layer for performance optimization
+  - Data validation system with custom rules
+  - Email notification system with user preferences
+  - Design review workflows
+  - 3D markup/annotation system
+  - Error tracking and monitoring with comprehensive logging
+  - OpenAPI 3.0 specification for API documentation
+  - File preview generation (GLB/GLTF format)
+  - Design version management with series tracking
 
 ## Contributing
 
